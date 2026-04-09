@@ -1,0 +1,12 @@
+jobUrl: https://example.com/careers/senior-backend-engineer
+profileId: backend-engineer
+lengthTarget: standard
+outputFormat: both
+experienceControls:
+  - blockId: org-jp-morgan-chase
+    include: true
+    emphasis: high
+    orderPriority: 1
+  - blockId: focus-public-sector
+    include: true
+    emphasis: medium

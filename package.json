@@ -1,0 +1,51 @@
+{
+  "name": "resume-tailor",
+  "version": "0.1.0",
+  "description": "Local NestJS CLI for building canonical resume sources and generating tailored resumes from job postings.",
+  "private": true,
+  "bin": {
+    "resume-tailor": "dist/src/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "start": "node dist/src/main.js",
+    "start:dev": "ts-node src/main.ts",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.8",
+    "@nestjs/config": "^3.2.3",
+    "@nestjs/core": "^10.4.8",
+    "cheerio": "^1.0.0",
+    "docx": "^9.0.2",
+    "inquirer": "^12.0.1",
+    "openai": "^4.71.1",
+    "pdf-parse": "^1.1.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.9.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testRegex": "tests/.*\\.test\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "testEnvironment": "node"
+  }
+}

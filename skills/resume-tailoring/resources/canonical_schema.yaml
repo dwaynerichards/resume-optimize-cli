@@ -1,0 +1,58 @@
+identity:
+  fullName: string
+  headline: string?
+  location: string?
+contact:
+  email: string?
+  phone: string?
+  website: string?
+  linkedin: string?
+  github: string?
+education:
+  - institution: string
+    degree: string?
+    fieldOfStudy: string?
+    graduationDate: string?
+certifications:
+  - name: string
+    issuer: string?
+summaryVariants:
+  - id: string
+    label: string
+    text: string
+    tags:
+      - string
+skills:
+  - category: string
+    items:
+      - string
+experience:
+  - id: string
+    company: string
+    roleTitle: string
+    dateRange:
+      start: string
+      end: string?
+      current: boolean?
+    bullets:
+      - id: string
+        original: string
+        alternates:
+          - string
+        tags:
+          - string
+        domainTags:
+          - string
+        safeReframes:
+          - string
+        allowedProfiles:
+          - string
+        riskLevel: low|medium|high
+roleClusters:
+  - id: string
+    label: string
+    type: organization|domain|focus-area|section
+    experienceIds:
+      - string
+    bulletIds:
+      - string

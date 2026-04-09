@@ -1,0 +1,36 @@
+profiles:
+  public-service:
+    preferredDomainTags:
+      - public-sector
+      - government
+      - service-delivery
+    likelySupportSignals:
+      - agency work
+      - civic or volunteer delivery
+      - incident response or operational coordination
+  backend-engineer:
+    preferredDomainTags:
+      - backend
+      - enterprise-platform
+      - integration
+    likelySupportSignals:
+      - APIs
+      - services
+      - platform integrations
+  general-swe:
+    preferredDomainTags:
+      - software-engineering
+      - delivery
+      - ownership
+    likelySupportSignals:
+      - cross-functional delivery
+      - broad platform work
+  blockchain-engineer:
+    preferredDomainTags:
+      - blockchain
+      - distributed-systems
+      - interoperability
+    likelySupportSignals:
+      - enterprise ledger integrations
+      - distributed interoperability
+      - blockchain-specific source bullets

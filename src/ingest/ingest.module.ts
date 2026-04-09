@@ -1,0 +1,19 @@
+import { Module } from '@nestjs/common';
+import { LlmModule } from '../llm/llm.module';
+import { ProfilesModule } from '../profiles/profiles.module';
+import { ResumeIngestService } from './resume-ingest.service';
+import { ResumeMasterBuilderService } from './resume-master-builder.service';
+import { ResumeMergeService } from './resume-merge.service';
+import { ResumeTextExtractionService } from './resume-text-extraction.service';
+
+@Module({
+  imports: [LlmModule, ProfilesModule],
+  providers: [
+    ResumeIngestService,
+    ResumeTextExtractionService,
+    ResumeMergeService,
+    ResumeMasterBuilderService,
+  ],
+  exports: [ResumeIngestService, ResumeTextExtractionService, ResumeMergeService],
+})
+export class IngestModule {}
