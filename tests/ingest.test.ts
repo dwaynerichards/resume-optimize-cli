@@ -132,4 +132,65 @@ describe('ResumeMergeService', () => {
       'focus-public-sector',
     );
   });
+
+  it('normalizes malformed merge-assist payloads instead of crashing on missing arrays', async () => {
+    const service = new ResumeMergeService({
+      merge: async (): Promise<ResumeMergeAssistResult> =>
+        ({
+          supportSignals: {
+            'backend-engineer': ['backend APIs'],
+          },
+        }) as ResumeMergeAssistResult,
+    });
+    const resumes: ExtractedResumeDocument[] = [
+      {
+        sourceFile: 'resume-a.md',
+        identity: { fullName: 'Jordan Example' },
+        contact: { email: 'jordan@example.com' },
+        education: [],
+        certifications: [],
+        summaryVariants: [],
+        skills: [{ category: 'Backend', items: ['TypeScript'] }],
+        domainTags: ['backend'],
+        notes: [],
+        sourceReference: {
+          sourceFile: 'resume-a.md',
+          sourceType: 'markdown',
+          extractedAt: '2026-04-09T00:00:00.000Z',
+        },
+        experience: [
+          {
+            company: 'Acme',
+            roleTitle: 'Engineer',
+            dateRange: { start: '2021-01' },
+            bullets: [
+              {
+                original: 'Built backend APIs.',
+                alternates: [],
+                tags: ['backend'],
+                domainTags: ['platform'],
+                safeReframes: [],
+                allowedProfiles: ['backend-engineer'],
+                riskLevel: 'low',
+                confidence: 0.9,
+              },
+            ],
+            tags: ['backend'],
+            domainTags: ['platform'],
+            alternatePhrasings: [],
+            safeReframingCategories: [],
+            confidence: 0.9,
+          },
+        ],
+      },
+    ];
+
+    const result = await service.merge(resumes, BASE_PROFILE_DEFINITIONS);
+
+    expect(result.mergeAssist.summaryVariants).toEqual([]);
+    expect(result.mergeAssist.additionalRoleClusters).toEqual([]);
+    expect(result.mergeAssist.supportSignals['backend-engineer']).toEqual(['backend APIs']);
+    expect(result.mergeAssist.supportSignals['general-swe']).toEqual([]);
+    expect(result.canonicalResume.experience).toHaveLength(1);
+  });
 });

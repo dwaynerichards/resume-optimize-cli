@@ -322,7 +322,7 @@ export class ResumeMergeService {
     profiles: ProfileDefinition[],
   ): Promise<ResumeMergeAssistResult> {
     try {
-      return await this.resumeMergeProvider.merge({ resumes, profiles });
+      return this.normalizeMergeAssist(await this.resumeMergeProvider.merge({ resumes, profiles }));
     } catch (error) {
       this.logger.warn(
         `Falling back to deterministic merge assistance: ${
@@ -341,6 +341,69 @@ export class ResumeMergeService {
       };
     }
   }
+
+  private normalizeMergeAssist(value: ResumeMergeAssistResult | undefined): ResumeMergeAssistResult {
+    const record = asRecord(value);
+    const supportSignals = asRecord(record.supportSignals);
+
+    return {
+      summaryVariants: asArray(record.summaryVariants)
+        .map((variant, index) => this.normalizeSummaryVariant(variant, index))
+        .filter(isDefined),
+      additionalRoleClusters: asArray(record.additionalRoleClusters)
+        .map((cluster) => this.normalizeRoleCluster(cluster))
+        .filter(isDefined),
+      supportSignals: {
+        'public-service': toStringArray(supportSignals['public-service']),
+        'backend-engineer': toStringArray(supportSignals['backend-engineer']),
+        'general-swe': toStringArray(supportSignals['general-swe']),
+        'blockchain-engineer': toStringArray(supportSignals['blockchain-engineer']),
+      },
+    };
+  }
+
+  private normalizeSummaryVariant(
+    value: unknown,
+    index: number,
+  ): ResumeMergeAssistResult['summaryVariants'][number] | undefined {
+    const record = asRecord(value);
+    const text = toOptionalString(record.text);
+
+    if (!text) {
+      return undefined;
+    }
+
+    return {
+      id: toOptionalString(record.id) ?? (slugify(text) || `summary-${index + 1}`),
+      label: toOptionalString(record.label) ?? 'general',
+      text,
+      tags: toStringArray(record.tags),
+      sourceBulletIds: toStringArray(record.sourceBulletIds),
+    };
+  }
+
+  private normalizeRoleCluster(
+    value: unknown,
+  ): ResumeMergeAssistResult['additionalRoleClusters'][number] | undefined {
+    const record = asRecord(value);
+    const id = toOptionalString(record.id);
+    const label = toOptionalString(record.label);
+    const type = toClusterType(record.type);
+
+    if (!id || !label || !type) {
+      return undefined;
+    }
+
+    return {
+      id,
+      label,
+      type,
+      tags: toStringArray(record.tags),
+      domainTags: toStringArray(record.domainTags),
+      defaultInclusion: Boolean(record.defaultInclusion),
+      inferredSupportProfiles: toSupportedProfileIds(record.inferredSupportProfiles),
+    };
+  }
 }
 
 function uniqueBy<T>(values: T[], keyFn: (value: T) => string): T[] {
@@ -355,4 +418,40 @@ function uniqueBy<T>(values: T[], keyFn: (value: T) => string): T[] {
     seen.add(key);
     return true;
   });
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.trim() || undefined : undefined;
+}
+
+function toStringArray(value: unknown): string[] {
+  return uniqueStrings(asArray(value).map((item) => toOptionalString(item)).filter(isDefined));
+}
+
+function toClusterType(value: unknown): RoleCluster['type'] | undefined {
+  return value === 'organization' || value === 'domain' || value === 'focus-area' || value === 'section'
+    ? value
+    : undefined;
+}
+
+function toSupportedProfileIds(value: unknown): RoleCluster['inferredSupportProfiles'] {
+  return asArray(value).filter(
+    (item): item is RoleCluster['inferredSupportProfiles'][number] =>
+      item === 'public-service' ||
+      item === 'backend-engineer' ||
+      item === 'general-swe' ||
+      item === 'blockchain-engineer',
+  );
 }

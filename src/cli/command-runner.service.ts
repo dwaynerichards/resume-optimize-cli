@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ParsedCommand, TailorCommandOptions } from '../common/dto/cli-options.dto';
 import { CliService } from './cli.service';
 
+const MULTI_TOKEN_VALUE_FLAGS = new Set(['resume', 'resume-dir']);
+
 @Injectable()
 export class CommandRunnerService {
   constructor(private readonly cliService: CliService) {}
@@ -99,22 +101,37 @@ export class CommandRunnerService {
       }
 
       const key = token.slice(2);
-      const next = args[index + 1];
+      const values: string[] = [];
+      const nextIndex = index + 1;
 
-      if (!next || next.startsWith('--')) {
+      if (!args[nextIndex] || args[nextIndex].startsWith('--')) {
         flags[key] = true;
         continue;
       }
 
-      if (flags[key] === undefined) {
-        flags[key] = next;
-      } else if (Array.isArray(flags[key])) {
-        (flags[key] as string[]).push(next);
-      } else {
-        flags[key] = [flags[key] as string, next];
+      for (
+        let valueIndex = nextIndex;
+        valueIndex < args.length && !args[valueIndex].startsWith('--');
+        valueIndex += 1
+      ) {
+        values.push(args[valueIndex]);
+
+        if (!MULTI_TOKEN_VALUE_FLAGS.has(key)) {
+          break;
+        }
       }
 
-      index += 1;
+      values.forEach((value) => {
+        if (flags[key] === undefined) {
+          flags[key] = value;
+        } else if (Array.isArray(flags[key])) {
+          (flags[key] as string[]).push(value);
+        } else {
+          flags[key] = [flags[key] as string, value];
+        }
+      });
+
+      index += values.length;
     }
 
     return flags;

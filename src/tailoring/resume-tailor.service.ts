@@ -14,6 +14,10 @@ import { ProfileResolutionService } from '../profiles/profile-resolution.service
 import { ExperienceMappingService } from './experience-mapping.service';
 import { ResumeDataLoaderService } from './resume-data-loader.service';
 
+interface ResumeTailorGenerateOptions {
+  onProgress?: (message: string) => void;
+}
+
 @Injectable()
 export class ResumeTailorService {
   constructor(
@@ -25,8 +29,14 @@ export class ResumeTailorService {
     private readonly resumeRewriteProvider: ResumeRewriteProvider,
   ) {}
 
-  async generate(request: TailoringRequest): Promise<TailoredResumeDocument> {
+  async generate(
+    request: TailoringRequest,
+    options?: ResumeTailorGenerateOptions,
+  ): Promise<TailoredResumeDocument> {
     const dataDir = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR);
+    const onProgress = options?.onProgress;
+
+    onProgress?.('Loading canonical resume data');
     const canonicalResume = await this.resumeDataLoaderService.loadCanonicalResume(
       resolve(dataDir, RESUME_MASTER_FILENAME),
     );
@@ -37,7 +47,9 @@ export class ResumeTailorService {
       resolve(dataDir, PROFILE_DEFAULTS_FILENAME),
     );
     const profile = this.profileResolutionService.resolveProfile(profileDefaults, request.profileId);
+    onProgress?.('Fetching and analyzing the job posting');
     const job = await this.jobParseService.fetchAndNormalize(request.jobUrl);
+    onProgress?.('Mapping experience to job requirements');
     const prepared = await this.experienceMappingService.prepareRewriteInput(
       canonicalResume,
       bulletBank,
@@ -47,6 +59,7 @@ export class ResumeTailorService {
       request.lengthTarget,
     );
 
+    onProgress?.('Generating tailored resume content');
     const tailored = await this.resumeRewriteProvider.tailor(prepared.rewriteInput);
     const experienceOrder = new Map(
       prepared.rewriteInput.canonicalResume.experience.map((entry, index) => [entry.id, index]),

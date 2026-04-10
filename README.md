@@ -50,6 +50,8 @@ Run the interactive flow:
 npm run start
 ```
 
+Long-running commands now print step-by-step terminal progress so ingest and tailoring do not look stalled while network and file work are running.
+
 Run the CLI directly from TypeScript during development:
 
 ```bash
@@ -84,6 +86,15 @@ npm run start -- ingest \
   --resume ./resumes/resume-b.pdf
 ```
 
+Repeated `--resume` flags are the clearest and safest way to pass multiple files. If you use a single comma-separated `--resume` value, make sure each item includes its full relative or absolute path.
+
+This also works:
+
+```bash
+npm run start -- ingest \
+  --resume ./resumes/resume-a.md,./resumes/resume-b.pdf
+```
+
 You can also point at a folder of source resumes:
 
 ```bash
@@ -99,6 +110,13 @@ If you have supplemental metadata:
 npm run start -- ingest \
   --resume ./resumes/resume-a.md \
   --metadata ./resumes/resume-metadata.yaml
+```
+
+If you changed TypeScript source files first, rebuild before using `npm run start` so `dist/` is current:
+
+```bash
+npm run build
+npm run start -- ingest --resume-dir ./resumes/team-a
 ```
 
 This produces:

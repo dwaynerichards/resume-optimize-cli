@@ -9,7 +9,7 @@ import {
   RESUME_MASTER_FILENAME,
 } from './common/constants';
 import { TailoringArtifacts } from './common/types';
-import { ensureDirectory } from './common/utils';
+import { ensureDirectory, TerminalProgress } from './common/utils';
 import { MarkdownExportService } from './export/markdown-export.service';
 import { DocxExportService } from './export/docx-export.service';
 import { ResumeIngestService } from './ingest/resume-ingest.service';
@@ -38,10 +38,21 @@ export class AppService {
     bulletBankPath: string;
     profileDefaultsPath: string;
   }> {
-    return this.resumeIngestService.ingest(options.resumePaths, {
-      resumeDirPaths: options.resumeDirPaths,
-      metadataPath: options.metadataPath,
-    });
+    const progress = new TerminalProgress();
+
+    try {
+      progress.start('Preparing resume ingest');
+      const result = await this.resumeIngestService.ingest(options.resumePaths, {
+        resumeDirPaths: options.resumeDirPaths,
+        metadataPath: options.metadataPath,
+        onProgress: (message) => progress.update(message),
+      });
+      progress.succeed('Resume ingest completed');
+      return result;
+    } catch (error) {
+      progress.fail('Resume ingest failed');
+      throw error;
+    }
   }
 
   async tailorResume(options: TailorCommandOptions): Promise<TailoringArtifacts> {
@@ -49,68 +60,89 @@ export class AppService {
       throw new Error('Tailor command requires jobUrl, profileId, lengthTarget, and outputFormat.');
     }
 
+    const progress = new TerminalProgress();
     const dataDir = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR);
     const outputDir = resolve(process.cwd(), process.env.OUTPUT_DIR ?? DEFAULT_OUTPUT_DIR);
 
-    await ensureDirectory(dataDir);
-    await ensureDirectory(outputDir);
+    try {
+      progress.start('Preparing tailoring run');
+      await ensureDirectory(dataDir);
+      await ensureDirectory(outputDir);
 
-    const canonicalResume = await this.resumeDataLoaderService.loadCanonicalResume(
-      resolve(dataDir, RESUME_MASTER_FILENAME),
-    );
-    const bulletBank = await this.resumeDataLoaderService.loadBulletBank(
-      resolve(dataDir, BULLET_BANK_FILENAME),
-    );
-    const profileDefaults = await this.profileResolutionService.loadProfileDefaults(
-      resolve(dataDir, PROFILE_DEFAULTS_FILENAME),
-    );
-    const selectedProfile = this.profileResolutionService.resolveProfile(profileDefaults, options.profileId);
+      progress.update('Loading canonical resume data');
+      const canonicalResume = await this.resumeDataLoaderService.loadCanonicalResume(
+        resolve(dataDir, RESUME_MASTER_FILENAME),
+      );
+      const bulletBank = await this.resumeDataLoaderService.loadBulletBank(
+        resolve(dataDir, BULLET_BANK_FILENAME),
+      );
+      const profileDefaults = await this.profileResolutionService.loadProfileDefaults(
+        resolve(dataDir, PROFILE_DEFAULTS_FILENAME),
+      );
+      const selectedProfile = this.profileResolutionService.resolveProfile(profileDefaults, options.profileId);
 
-    const tailoredResume = await this.resumeTailorService.generate({
-      jobUrl: options.jobUrl,
-      profileId: options.profileId,
-      experienceControls: options.experienceControls ?? [],
-      lengthTarget: options.lengthTarget,
-      outputFormat: options.outputFormat,
-    });
+      const tailoredResume = await this.resumeTailorService.generate(
+        {
+          jobUrl: options.jobUrl,
+          profileId: options.profileId,
+          experienceControls: options.experienceControls ?? [],
+          lengthTarget: options.lengthTarget,
+          outputFormat: options.outputFormat,
+        },
+        {
+          onProgress: (message) => progress.update(message),
+        },
+      );
 
-    const validation = options.skipValidation
-      ? { valid: true, issues: [], traceabilityCoverage: 1 }
-      : await this.resumeValidationService.validate(tailoredResume, canonicalResume, bulletBank);
+      progress.update(options.skipValidation ? 'Skipping validation' : 'Validating tailored resume');
+      const validation = options.skipValidation
+        ? { valid: true, issues: [], traceabilityCoverage: 1 }
+        : await this.resumeValidationService.validate(tailoredResume, canonicalResume, bulletBank);
 
-    if (!validation.valid) {
-      return { validation };
+      if (!validation.valid) {
+        progress.succeed('Tailoring completed with validation errors');
+        return { validation };
+      }
+
+      progress.update('Preparing output directory');
+      const runFolder = resolve(
+        outputDir,
+        `${new Date().toISOString().replace(/[:.]/g, '-')}-${selectedProfile.id}`,
+      );
+      await ensureDirectory(runFolder);
+
+      const markdownPath = resolve(runFolder, 'tailored_resume.md');
+      const docxPath = resolve(runFolder, 'tailored_resume.docx');
+      const reportPath = resolve(runFolder, 'change_report.md');
+
+      progress.update('Writing Markdown resume');
+      await this.markdownExportService.writeToFile(markdownPath, tailoredResume);
+
+      if (options.outputFormat === 'docx' || options.outputFormat === 'both') {
+        progress.update('Writing DOCX resume');
+        await this.docxExportService.writeToFile(docxPath, tailoredResume);
+      }
+
+      progress.update('Generating change report');
+      const changeReport = await this.changeReportService.generate({
+        tailoredResume,
+        canonicalResume,
+        bulletBank,
+        profile: selectedProfile,
+      });
+      progress.update('Writing change report');
+      await this.markdownExportService.writeReportToFile(reportPath, changeReport);
+
+      progress.succeed('Tailored resume generated');
+      return {
+        markdownPath,
+        docxPath: options.outputFormat === 'md' ? undefined : docxPath,
+        reportPath,
+        validation,
+      };
+    } catch (error) {
+      progress.fail('Tailoring failed');
+      throw error;
     }
-
-    const runFolder = resolve(
-      outputDir,
-      `${new Date().toISOString().replace(/[:.]/g, '-')}-${selectedProfile.id}`,
-    );
-    await ensureDirectory(runFolder);
-
-    const markdownPath = resolve(runFolder, 'tailored_resume.md');
-    const docxPath = resolve(runFolder, 'tailored_resume.docx');
-    const reportPath = resolve(runFolder, 'change_report.md');
-
-    await this.markdownExportService.writeToFile(markdownPath, tailoredResume);
-
-    if (options.outputFormat === 'docx' || options.outputFormat === 'both') {
-      await this.docxExportService.writeToFile(docxPath, tailoredResume);
-    }
-
-    const changeReport = await this.changeReportService.generate({
-      tailoredResume,
-      canonicalResume,
-      bulletBank,
-      profile: selectedProfile,
-    });
-    await this.markdownExportService.writeReportToFile(reportPath, changeReport);
-
-    return {
-      markdownPath,
-      docxPath: options.outputFormat === 'md' ? undefined : docxPath,
-      reportPath,
-      validation,
-    };
   }
 }

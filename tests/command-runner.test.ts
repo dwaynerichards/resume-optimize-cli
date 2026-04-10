@@ -30,6 +30,31 @@ describe('CommandRunnerService', () => {
     });
   });
 
+  it('parses multi-token comma-separated resume paths with spaces after commas', async () => {
+    const cliService = {
+      runInteractive: jest.fn(),
+      runIngest: jest.fn(),
+      runTailor: jest.fn(),
+      runInspectCorpus: jest.fn(),
+      printHelp: jest.fn(),
+    };
+    const runner = new CommandRunnerService(cliService as never);
+
+    await runner.run([
+      'ingest',
+      '--resume',
+      '../Resumes/one.md,',
+      'two.md,',
+      'three.md',
+    ]);
+
+    expect(cliService.runIngest).toHaveBeenCalledWith({
+      resumePaths: ['../Resumes/one.md', 'two.md', 'three.md'],
+      resumeDirPaths: [],
+      metadataPath: undefined,
+    });
+  });
+
   it('runs corpus inspection for inspect corpus', async () => {
     const cliService = {
       runInteractive: jest.fn(),

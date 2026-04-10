@@ -3,3 +3,5 @@ dist/
 session-handoff/
 .env
 .DS_Store
+output/*
+data/*
