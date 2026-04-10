@@ -12,20 +12,35 @@ import {
 @Injectable()
 export class InteractivePromptService {
   async promptForInitialIngest(): Promise<IngestCommandOptions> {
-    const { resumePaths } = await inquirer.prompt<{ resumePaths: string }>([
+    const answers = await inquirer.prompt<{ resumePaths: string; resumeDirPaths: string }>([
       {
         type: 'input',
         name: 'resumePaths',
         message: 'Canonical resume source not found. Enter one or more resume paths (comma-separated):',
-        validate: (value: string) => (value.trim().length > 0 ? true : 'Provide at least one resume path.'),
+      },
+      {
+        type: 'input',
+        name: 'resumeDirPaths',
+        message: 'Optional: enter resume folders to expand (comma-separated):',
       },
     ]);
 
+    const resumePaths = answers.resumePaths
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const resumeDirPaths = answers.resumeDirPaths
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (resumePaths.length === 0 && resumeDirPaths.length === 0) {
+      throw new Error('Provide at least one resume file or resume folder.');
+    }
+
     return {
-      resumePaths: resumePaths
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
+      resumePaths,
+      resumeDirPaths,
     };
   }
 

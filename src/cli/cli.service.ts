@@ -12,6 +12,7 @@ import { readStructuredFile } from '../common/utils';
 import { ExperienceControlDiscoveryService } from '../profiles/experience-control-discovery.service';
 import { ProfileResolutionService } from '../profiles/profile-resolution.service';
 import { ResumeDataLoaderService } from '../tailoring/resume-data-loader.service';
+import { CorpusInspectionService } from './corpus-inspection.service';
 import { InteractivePromptService } from './interactive-prompt.service';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class CliService {
     private readonly profileResolutionService: ProfileResolutionService,
     private readonly experienceControlDiscoveryService: ExperienceControlDiscoveryService,
     private readonly resumeDataLoaderService: ResumeDataLoaderService,
+    private readonly corpusInspectionService: CorpusInspectionService,
   ) {}
 
   async runInteractive(): Promise<void> {
@@ -51,6 +53,8 @@ export class CliService {
     process.stdout.write(
       [
         'Canonical resume source generated.',
+        `- source files (${result.sourceFiles.length}):`,
+        ...result.sourceFiles.map((sourceFile) => `  - ${sourceFile}`),
         `- resume master: ${result.resumeMasterPath}`,
         `- bullet bank: ${result.bulletBankPath}`,
         `- profile defaults: ${result.profileDefaultsPath}`,
@@ -65,18 +69,51 @@ export class CliService {
     this.printTailorSummary(artifacts);
   }
 
+  async runInspectCorpus(): Promise<void> {
+    const dataDir = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR);
+    const summary = await this.corpusInspectionService.inspect(dataDir);
+
+    process.stdout.write(
+      [
+        'Corpus inspection',
+        `- data dir: ${summary.dataDir}`,
+        `- source files (${summary.sourceFiles.length}):`,
+        ...summary.sourceFiles.map((sourceFile) => `  - ${sourceFile}`),
+        `- canonical experience entries: ${summary.experienceCount}`,
+        `- bullet bank bullets: ${summary.bulletCount}`,
+        `- role clusters: ${summary.roleClusterCount}`,
+        ...Object.entries(summary.blockTypeCounts).map(
+          ([type, count]) => `  - ${type}: ${count}`,
+        ),
+        `- profiles: ${summary.profileCount}`,
+        ...summary.profileSummaries.map((profile) => {
+          const support =
+            profile.supportScore !== undefined ? `${Math.round(profile.supportScore * 100)}% support` : 'no score';
+          const supported = profile.supported === false ? 'unsupported' : 'supported';
+          return `  - ${profile.id}: ${support}, ${supported}`;
+        }),
+        summary.profileDefaultsSourceFiles.length === 0
+          ? '- profile defaults: using built-in base profiles'
+          : `- profile defaults source files: ${summary.profileDefaultsSourceFiles.length}`,
+        '',
+      ].join('\n'),
+    );
+  }
+
   printHelp(): void {
     process.stdout.write(
       [
         'resume-tailor',
         '',
         'Usage:',
-        '  npm run start -- ingest --resume path/to/resume.md --resume path/to/resume.pdf',
+        '  npm run start -- ingest --resume path/to/resume.md --resume-dir path/to/resumes',
+        '  npm run start -- inspect corpus',
         '  npm run start -- tailor --job-url https://example.com/job --profile backend-engineer --output md,docx',
         '  npm run start',
         '',
         'Commands:',
-        '  ingest    Build or rebuild the canonical resume source from one or more resumes',
+        '  ingest    Build or rebuild the canonical resume source from one or more resumes or folders',
+        '  inspect   Print a corpus summary for the current canonical resume data',
         '  tailor    Generate tailored resume artifacts from a job posting URL',
         '',
         'Tailor flags:',
@@ -87,6 +124,11 @@ export class CliService {
         '  --output md|docx|md,docx',
         '  --config path/to/tailor-config.yaml',
         '  --skip-validation',
+        '',
+        'Ingest flags:',
+        '  --resume path/to/resume.md',
+        '  --resume-dir path/to/resume-folder',
+        '  --metadata path/to/resume-metadata.yaml',
         '',
       ].join('\n'),
     );

@@ -6,13 +6,14 @@ import { JobsModule } from '../jobs/jobs.module';
 import { ProfilesModule } from '../profiles/profiles.module';
 import { TailoringModule } from '../tailoring/tailoring.module';
 import { ValidationModule } from '../validation/validation.module';
+import { CorpusInspectionService } from './corpus-inspection.service';
 import { CliService } from './cli.service';
 import { CommandRunnerService } from './command-runner.service';
 import { InteractivePromptService } from './interactive-prompt.service';
 
 @Module({
   imports: [IngestModule, JobsModule, ProfilesModule, TailoringModule, ValidationModule, ExportModule],
-  providers: [AppService, CliService, InteractivePromptService, CommandRunnerService],
-  exports: [AppService, CliService, InteractivePromptService, CommandRunnerService],
+  providers: [AppService, CliService, InteractivePromptService, CommandRunnerService, CorpusInspectionService],
+  exports: [AppService, CliService, InteractivePromptService, CommandRunnerService, CorpusInspectionService],
 })
 export class CliModule {}

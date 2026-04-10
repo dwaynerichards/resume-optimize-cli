@@ -14,7 +14,10 @@ export class CommandRunnerService {
         await this.cliService.runInteractive();
         return;
       case 'ingest':
-        await this.cliService.runIngest(parsed.ingest ?? { resumePaths: [] });
+        await this.cliService.runIngest(parsed.ingest ?? { resumePaths: [], resumeDirPaths: [] });
+        return;
+      case 'inspect':
+        await this.cliService.runInspectCorpus();
         return;
       case 'tailor':
         await this.cliService.runTailor(parsed.tailor ?? {});
@@ -37,20 +40,30 @@ export class CommandRunnerService {
 
     if (first === 'ingest') {
       const flags = this.parseFlags(argv.slice(1));
-      const resumeFlag = flags.resume;
-      const resumePaths = Array.isArray(resumeFlag)
-        ? resumeFlag.flatMap((value) => value.split(',').map((item) => item.trim()).filter(Boolean))
-        : typeof resumeFlag === 'string'
-          ? resumeFlag.split(',').map((item) => item.trim()).filter(Boolean)
-          : [];
+      const resumePaths = this.parsePathFlags(flags.resume);
+      const resumeDirPaths = this.parsePathFlags(flags['resume-dir']);
 
       return {
         command: 'ingest',
         ingest: {
           resumePaths,
+          resumeDirPaths,
           metadataPath: typeof flags.metadata === 'string' ? flags.metadata : undefined,
         },
       };
+    }
+
+    if (first === 'inspect') {
+      if (argv[1] === 'corpus') {
+        return {
+          command: 'inspect',
+          inspect: {
+            target: 'corpus',
+          },
+        };
+      }
+
+      return { command: 'help' };
     }
 
     const tailorArgs = first === 'tailor' ? argv.slice(1) : argv;
@@ -121,5 +134,17 @@ export class CommandRunnerService {
     }
 
     return value as TailorCommandOptions['outputFormat'];
+  }
+
+  private parsePathFlags(value: string | string[] | boolean | undefined): string[] {
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => item.split(',').map((part) => part.trim()).filter(Boolean));
+    }
+
+    if (typeof value === 'string') {
+      return value.split(',').map((item) => item.trim()).filter(Boolean);
+    }
+
+    return [];
   }
 }

@@ -5,6 +5,7 @@ import { ResumeExtractionProvider } from '../llm/interfaces';
 import { ProfileRegistryService } from '../profiles/profile-registry.service';
 import { ResumeMasterBuilderService } from './resume-master-builder.service';
 import { ResumeMergeService } from './resume-merge.service';
+import { ResumeSourceDiscoveryService } from './resume-source-discovery.service';
 import { ResumeTextExtractionService } from './resume-text-extraction.service';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class ResumeIngestService {
     private readonly textExtractionService: ResumeTextExtractionService,
     @Inject(RESUME_EXTRACTION_PROVIDER)
     private readonly extractionProvider: ResumeExtractionProvider,
+    private readonly resumeSourceDiscoveryService: ResumeSourceDiscoveryService,
     private readonly resumeMergeService: ResumeMergeService,
     private readonly masterBuilderService: ResumeMasterBuilderService,
     private readonly profileRegistryService: ProfileRegistryService,
@@ -21,19 +23,26 @@ export class ResumeIngestService {
   async ingest(
     resumePaths: string[],
     _options?: {
+      resumeDirPaths?: string[];
       metadataPath?: string;
     },
   ): Promise<{
+    sourceFiles: string[];
     resumeMasterPath: string;
     bulletBankPath: string;
     profileDefaultsPath: string;
   }> {
-    if (resumePaths.length === 0) {
+    const sourceFiles = await this.resumeSourceDiscoveryService.collectSources(
+      resumePaths,
+      _options?.resumeDirPaths ?? [],
+    );
+
+    if (sourceFiles.length === 0) {
       throw new Error('Provide at least one resume file to ingest.');
     }
 
     const extractedResumes = await Promise.all(
-      resumePaths.map(async (resumePath) => {
+      sourceFiles.map(async (resumePath) => {
         const text = await this.textExtractionService.extract(resumePath);
         const extraction = await this.extractionProvider.extract({
           sourceFile: resumePath,
@@ -62,6 +71,11 @@ export class ResumeIngestService {
       mergeAssist.supportSignals,
     );
 
-    return this.masterBuilderService.persist(canonicalResume, bulletBank, profileDefaults);
+    const persisted = await this.masterBuilderService.persist(canonicalResume, bulletBank, profileDefaults);
+
+    return {
+      ...persisted,
+      sourceFiles,
+    };
   }
 }

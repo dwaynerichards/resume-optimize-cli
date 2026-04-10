@@ -9,7 +9,7 @@ export class OpenAiLlmClient implements LlmClient {
   private readonly model: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.model = this.configService.get<string>('OPENAI_MODEL') ?? 'gpt-4.1-mini';
+    this.model = this.configService.get<string>('OPENAI_MODEL') ?? 'gpt-5.4-mini';
   }
 
   async completeText(request: LlmTextRequest): Promise<string> {

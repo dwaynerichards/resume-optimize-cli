@@ -33,11 +33,13 @@ export class AppService {
   ) {}
 
   async ingestResumes(options: IngestCommandOptions): Promise<{
+    sourceFiles: string[];
     resumeMasterPath: string;
     bulletBankPath: string;
     profileDefaultsPath: string;
   }> {
     return this.resumeIngestService.ingest(options.resumePaths, {
+      resumeDirPaths: options.resumeDirPaths,
       metadataPath: options.metadataPath,
     });
   }

@@ -7,6 +7,7 @@ import {
 
 export interface IngestCommandOptions {
   resumePaths: string[];
+  resumeDirPaths: string[];
   metadataPath?: string;
 }
 
@@ -22,7 +23,10 @@ export interface TailorCommandOptions {
 }
 
 export interface ParsedCommand {
-  command: 'ingest' | 'tailor' | 'interactive' | 'help';
+  command: 'ingest' | 'tailor' | 'interactive' | 'help' | 'inspect';
   ingest?: IngestCommandOptions;
   tailor?: TailorCommandOptions;
+  inspect?: {
+    target: 'corpus';
+  };
 }

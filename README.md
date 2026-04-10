@@ -1,31 +1,104 @@
 # resume-tailor
 
-`resume-tailor` is a reusable local NestJS CLI that ingests one or more resume files into a structured canonical source, parses a job posting URL, and generates a tailored Markdown resume, DOCX resume, and Markdown change report with validation guards.
+`resume-tailor` is a local NestJS CLI for ingesting one or more source resumes or resume folders into a canonical dataset, analyzing a job posting URL, and generating a tailored Markdown resume, DOCX resume, and Markdown change report with validation guards.
 
 ## What it does
 
-- ingests multiple resume files and merges them into `data/resume_master.yaml`
-- builds `data/bullet_bank.yaml` with bullet-level traceability, tags, safe reframes, and allowed profiles
+- ingests multiple resume files or top-level resume folders into `data/resume_master.yaml`
+- builds `data/bullet_bank.yaml` with bullet-level traceability metadata
 - infers profile support into `data/profile_defaults.yaml`
 - fetches and normalizes job postings from URLs
-- applies a predefined global profile plus local experience controls
+- applies a predefined profile plus discovered experience controls
 - generates validated Markdown and DOCX resume artifacts
 - produces a Markdown change report describing what changed and why
 
 ## Setup
 
-1. `cd resume-tailor`
-2. `cp .env.example .env`
-3. Set `OPENAI_API_KEY` in `.env`
-4. `npm install`
-5. `npm run build`
+Run everything from the repository root:
 
-## Ingest multiple resumes
+```bash
+cp .env.example .env
+```
+
+Set `OPENAI_API_KEY` in `.env`.
+
+The CLI defaults to `gpt-5.4-mini`, and you can override it in `.env` if needed:
+
+```env
+OPENAI_MODEL=gpt-5.4-mini
+OPENAI_TEMPERATURE=0.2
+```
+
+Then install and build:
+
+```bash
+npm install
+npm run build
+```
+
+## Useful commands
+
+Show CLI help:
+
+```bash
+npm run start -- help
+```
+
+Run the interactive flow:
+
+```bash
+npm run start
+```
+
+Run the CLI directly from TypeScript during development:
+
+```bash
+npm run start:dev -- help
+```
+
+Rebuild after code changes:
+
+```bash
+npm run build
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Remove compiled output:
+
+```bash
+npm run clean
+```
+
+## Ingest resumes
 
 Use the ingest command whenever you add or update source resumes:
 
 ```bash
-npm run start -- ingest --resume ./resumes/resume-a.md --resume ./resumes/resume-b.pdf
+npm run start -- ingest \
+  --resume ./resumes/resume-a.md \
+  --resume ./resumes/resume-b.pdf
+```
+
+You can also point at a folder of source resumes:
+
+```bash
+npm run start -- ingest \
+  --resume-dir ./resumes/team-a
+```
+
+Files and folders can be mixed. Folder ingest scans only the top level and picks up `.md`, `.markdown`, `.txt`, and `.pdf` files. Duplicate paths are removed before ingest.
+
+If you have supplemental metadata:
+
+```bash
+npm run start -- ingest \
+  --resume ./resumes/resume-a.md \
+  --metadata ./resumes/resume-metadata.yaml
 ```
 
 This produces:
@@ -34,13 +107,21 @@ This produces:
 - `data/bullet_bank.yaml`
 - `data/profile_defaults.yaml`
 
-The canonical builder supports multiple source resumes, deduplicates overlapping content conservatively, preserves chronology, and discovers reusable experience blocks such as organization clusters, domain clusters, leadership work, or public-sector work.
+Rerun ingest with the full resume set whenever your source corpus changes.
 
-## Regenerate the canonical master source
+## Inspect the corpus
 
-Run the same ingest command again with the full resume set whenever the source corpus changes. The builder is designed to be rerun and replace the canonical YAML outputs.
+After ingest, print a concise summary of the canonical corpus:
 
-## Interactive tailoring
+```bash
+npm run start -- inspect corpus
+```
+
+This reports the data directory, source files, experience count, bullet count, discovered block counts, and profile support scores.
+
+## Tailor a resume
+
+### Interactive mode
 
 Running with no arguments launches the guided CLI flow:
 
@@ -48,16 +129,9 @@ Running with no arguments launches the guided CLI flow:
 npm run start
 ```
 
-If no canonical source exists yet, the CLI first asks for resume files and runs ingest. It then prompts for:
+If no canonical source exists yet, the CLI first asks for resume files and optional resume folders before it runs ingest.
 
-- job posting URL
-- global profile
-- include or exclude plus emphasis for each discovered experience block
-- optional ordering priorities
-- target length
-- output format
-
-## Non-interactive tailoring
+### Non-interactive mode
 
 Direct flags:
 
@@ -76,11 +150,20 @@ Config-file driven:
 npm run start -- tailor --config ./examples/tailor-config.example.yaml
 ```
 
-`--output md,docx` resolves to both formats. `--skip-validation` is available for debugging, but the default path is to validate every generated resume.
+Validation can be skipped for debugging only:
 
-## Global profiles vs local experience controls
+```bash
+npm run start -- tailor \
+  --job-url https://example.com/jobs/backend \
+  --profile general-swe \
+  --skip-validation
+```
 
-Profiles are stable strategy templates. v1 includes:
+`--output md,docx` resolves to both formats.
+
+## Profiles and experience controls
+
+Profiles are stable strategy templates. The built-in profile ids are:
 
 - `public-service`
 - `backend-engineer`
@@ -89,11 +172,11 @@ Profiles are stable strategy templates. v1 includes:
 
 Profiles control summary framing, skills ordering, tone, and preferred or disfavored tags.
 
-Experience controls are discovered from the canonical resume corpus. They are generic blocks, not hard-coded employers. The CLI exposes include or exclude, emphasis, and optional ordering for the discovered organizations, domain clusters, and focus areas in the resume corpus.
+Experience controls are discovered from the canonical resume corpus. They are generic blocks, not hard-coded employers. The CLI exposes include or exclude, emphasis, and optional ordering for those discovered organizations, domain clusters, and focus areas.
 
 ## Profile support inference
 
-`profile_defaults.yaml` stores predefined profile definitions plus inferred support metadata from the ingested resume corpus. That metadata is based on domain-tag overlap, bullet-tag overlap, and merge-time support signals. Profiles with weak support can be flagged or hidden, especially the more specialized ones such as `blockchain-engineer`.
+`data/profile_defaults.yaml` stores the built-in profile definitions plus inferred support metadata from the ingested resume corpus. After changing `src/common/constants/default-profiles.ts`, rerun ingest so the generated defaults stay in sync.
 
 ## Output artifacts
 
@@ -103,7 +186,7 @@ Successful tailoring runs write to a timestamped folder under `output/`:
 - `tailored_resume.docx`
 - `change_report.md`
 
-Markdown is treated as the canonical export surface. DOCX is generated from the structured resume document, not from PDF conversion.
+Markdown is treated as the canonical export surface. DOCX is generated from the structured resume document rather than PDF conversion.
 
 ## Validation and factuality
 
@@ -119,14 +202,17 @@ The validation layer checks:
 
 The system is designed to preserve factual accuracy and reject or flag unsupported claims rather than embellish them.
 
-## Extending profiles
+## Relevant files
 
-Add or modify base profile definitions in [src/common/constants/default-profiles.ts](/Users/dwaynerichards/Developer/Job-Hunt/resume-optimize-cli/resume-tailor/src/common/constants/default-profiles.ts). Profile defaults are generated into `data/profile_defaults.yaml` during ingest, so rerun ingest after updating the base definitions.
-
-## Swapping LLM providers later
-
-The LLM integration is isolated behind injectable interfaces in [src/llm/interfaces](/Users/dwaynerichards/Developer/Job-Hunt/resume-optimize-cli/resume-tailor/src/llm/interfaces). The v1 OpenAI implementation lives under [src/llm/openai](/Users/dwaynerichards/Developer/Job-Hunt/resume-optimize-cli/resume-tailor/src/llm/openai). To add another provider, implement the same interfaces and change the bindings in [src/llm/llm.module.ts](/Users/dwaynerichards/Developer/Job-Hunt/resume-optimize-cli/resume-tailor/src/llm/llm.module.ts).
+- `src/cli/cli.service.ts` for help text and command output
+- `src/cli/command-runner.service.ts` for CLI parsing behavior
+- `src/common/constants/default-profiles.ts` for built-in profiles
+- `src/llm/interfaces` for provider interfaces
+- `src/llm/openai` for the current OpenAI-backed implementation
+- `src/llm/llm.module.ts` for provider bindings
+- `examples/experience-config.example.yaml` for experience-control overrides
+- `examples/tailor-config.example.yaml` for config-driven tailoring
 
 ## Included Codex skill
 
-The repository includes a reusable skill at [skills/resume-tailoring/SKILL.md](/Users/dwaynerichards/Developer/Job-Hunt/resume-optimize-cli/resume-tailor/skills/resume-tailoring/SKILL.md). Use it when working on resume ingestion, profile handling, tailoring rules, validation, or output generation inside this repository.
+The repository includes a reusable skill at `skills/resume-tailoring/SKILL.md`. Use it when working on resume ingestion, profile handling, tailoring rules, validation, or output generation inside this repository.
