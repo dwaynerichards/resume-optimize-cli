@@ -20,14 +20,20 @@ Run everything from the repository root:
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env`.
-
-The CLI defaults to `gpt-5.4-mini`, and you can override it in `.env` if needed:
+Set the active LLM provider and its credentials in `.env`:
 
 ```env
-OPENAI_MODEL=gpt-5.4-mini
+LLM_PROVIDER=openai
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
 OPENAI_TEMPERATURE=0.2
 ```
+
+`LLM_PROVIDER` defaults to `openai`. Only `openai` is implemented today, so
+only the OpenAI key and settings are active in this phase. The provider
+selector exists to let future Anthropic, Gemini, or other adapters plug in
+behind `src/llm/interfaces` and `src/llm/llm.module.ts` without threading
+vendor checks through the jobs, ingest, tailoring, or validation layers.
 
 Then install and build:
 
@@ -246,8 +252,8 @@ The system is designed to preserve factual accuracy and reject or flag unsupport
 - `src/cli/command-runner.service.ts` for CLI parsing behavior
 - `src/common/constants/default-profiles.ts` for built-in profiles
 - `src/llm/interfaces` for provider interfaces
-- `src/llm/openai` for the current OpenAI-backed implementation
-- `src/llm/llm.module.ts` for provider bindings
+- `src/llm/openai` for the current OpenAI-backed adapter implementation
+- `src/llm/llm.module.ts` for active-provider selection and DI bindings
 - `examples/experience-config.example.yaml` for experience-control overrides
 - `examples/tailor-config.example.yaml` for config-driven tailoring
 

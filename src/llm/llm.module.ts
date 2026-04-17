@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
   JOB_ANALYSIS_PROVIDER,
   LLM_CLIENT,
@@ -15,6 +15,32 @@ import { OpenAiResumeExtractionProvider } from './openai/openai-resume-extractio
 import { OpenAiResumeMergeProvider } from './openai/openai-resume-merge.provider';
 import { OpenAiResumeRewriteProvider } from './openai/openai-resume-rewrite.provider';
 
+type SupportedLlmProvider = 'openai';
+
+const SUPPORTED_LLM_PROVIDERS: SupportedLlmProvider[] = ['openai'];
+
+const getConfiguredLlmProvider = (
+  configService: ConfigService,
+): SupportedLlmProvider => {
+  const configured = configService
+    .get<string>('LLM_PROVIDER')
+    ?.trim()
+    .toLowerCase();
+
+  if (!configured || configured === 'openai') {
+    return 'openai';
+  }
+
+  throw new Error(
+    `Unsupported LLM_PROVIDER "${configured}". Supported providers: ${SUPPORTED_LLM_PROVIDERS.join(', ')}.`,
+  );
+};
+
+const selectProvider = <T>(
+  configService: ConfigService,
+  providers: Record<SupportedLlmProvider, T>,
+): T => providers[getConfiguredLlmProvider(configService)];
+
 @Module({
   imports: [ConfigModule],
   providers: [
@@ -24,12 +50,63 @@ import { OpenAiResumeRewriteProvider } from './openai/openai-resume-rewrite.prov
     OpenAiJobAnalysisProvider,
     OpenAiResumeRewriteProvider,
     OpenAiReportGenerationProvider,
-    { provide: LLM_CLIENT, useExisting: OpenAiLlmClient },
-    { provide: RESUME_EXTRACTION_PROVIDER, useExisting: OpenAiResumeExtractionProvider },
-    { provide: RESUME_MERGE_PROVIDER, useExisting: OpenAiResumeMergeProvider },
-    { provide: JOB_ANALYSIS_PROVIDER, useExisting: OpenAiJobAnalysisProvider },
-    { provide: RESUME_REWRITE_PROVIDER, useExisting: OpenAiResumeRewriteProvider },
-    { provide: REPORT_GENERATION_PROVIDER, useExisting: OpenAiReportGenerationProvider },
+    {
+      provide: LLM_CLIENT,
+      useFactory: (
+        configService: ConfigService,
+        openAiLlmClient: OpenAiLlmClient,
+      ) => selectProvider(configService, { openai: openAiLlmClient }),
+      inject: [ConfigService, OpenAiLlmClient],
+    },
+    {
+      provide: RESUME_EXTRACTION_PROVIDER,
+      useFactory: (
+        configService: ConfigService,
+        openAiResumeExtractionProvider: OpenAiResumeExtractionProvider,
+      ) =>
+        selectProvider(configService, {
+          openai: openAiResumeExtractionProvider,
+        }),
+      inject: [ConfigService, OpenAiResumeExtractionProvider],
+    },
+    {
+      provide: RESUME_MERGE_PROVIDER,
+      useFactory: (
+        configService: ConfigService,
+        openAiResumeMergeProvider: OpenAiResumeMergeProvider,
+      ) => selectProvider(configService, { openai: openAiResumeMergeProvider }),
+      inject: [ConfigService, OpenAiResumeMergeProvider],
+    },
+    {
+      provide: JOB_ANALYSIS_PROVIDER,
+      useFactory: (
+        configService: ConfigService,
+        openAiJobAnalysisProvider: OpenAiJobAnalysisProvider,
+      ) => selectProvider(configService, { openai: openAiJobAnalysisProvider }),
+      inject: [ConfigService, OpenAiJobAnalysisProvider],
+    },
+    {
+      provide: RESUME_REWRITE_PROVIDER,
+      useFactory: (
+        configService: ConfigService,
+        openAiResumeRewriteProvider: OpenAiResumeRewriteProvider,
+      ) =>
+        selectProvider(configService, {
+          openai: openAiResumeRewriteProvider,
+        }),
+      inject: [ConfigService, OpenAiResumeRewriteProvider],
+    },
+    {
+      provide: REPORT_GENERATION_PROVIDER,
+      useFactory: (
+        configService: ConfigService,
+        openAiReportGenerationProvider: OpenAiReportGenerationProvider,
+      ) =>
+        selectProvider(configService, {
+          openai: openAiReportGenerationProvider,
+        }),
+      inject: [ConfigService, OpenAiReportGenerationProvider],
+    },
   ],
   exports: [
     LLM_CLIENT,

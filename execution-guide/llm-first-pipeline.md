@@ -1,44 +1,51 @@
 # Execution Guide — LLM-First Pipeline Simplification
 
-**Target model:** Sonnet
+**Runtime scope:** provider-neutral configuration seam with `openai` as the only implemented backend in Phase 0
 **Target branch:** `refactor/llm-first-pipeline` (new — see Pre-Flight)
 **Supersedes:** `phase-2-role-intent-split.md` (keep the file for history; do not execute it)
 **Upstream context:** `session-handoff/2026-04-11T02-54 - profile-selection-recommendation-handoff.md`
 
 ## Goal
 
-Stop hand-classifying and hand-scoring what the LLM already handles. Reduce the pipeline to:
+Before more LLM-first simplification work, make the runtime provider choice explicit. Then reduce
+the pipeline to:
 
-1. Fetch + parse HTML → raw text (deterministic)
-2. **LLM** classifies job (role + employer context) via structured output
-3. **LLM** tailors resume from canonical corpus + job posting in one shot
-4. **Deterministic validator** gates the LLM output (traceability, chronology, identity)
+1. Select the active LLM backend via `LLM_PROVIDER` (default `openai`)
+2. Fetch + parse HTML → raw text (deterministic)
+3. **LLM** classifies job (role + employer context) via structured output
+4. **LLM** tailors resume from canonical corpus + job posting in one shot
+5. **Deterministic validator** gates the LLM output (traceability, chronology, identity)
 
 Delete the heuristic classifier/scorer/keyword layers that sit between those steps.
 
 ## Success Criteria (verify before declaring the work done)
 
-1. NYC Full Stack Developer end-to-end →
+1. Phase 0 provider selection →
+   - `LLM_PROVIDER=openai` remains the default working path
+   - unsupported `LLM_PROVIDER` values fail fast in `LlmModule` with a clear error
+   - `.env.example` and `README.md` explain provider selection and note that only OpenAI is
+     implemented today
+2. NYC Full Stack Developer end-to-end →
    - `roleClassification === 'full-stack-engineering'`
    - `employerContext === 'public-sector'`
    - Recommended `profileId` is `general-swe` or `backend-engineer`, **not** `public-service`
    - Canonical target: `https://cityjobs.nyc.gov/job/full-stack-developer-in-brooklyn-jid-41824`
-2. The following files are deleted:
+3. The following files are deleted:
    - `src/jobs/keyword-extraction.service.ts`
    - `src/jobs/job-classification.service.ts`
    - `src/llm/interfaces/job-analysis-provider.interface.ts` → collapsed into a single extract prompt (or kept if a second phase wants it; see Phase 1 notes)
-3. The following methods are deleted:
+4. The following methods are deleted:
    - `ProfileRecommendationService.scoreProfile` (replaced by a minimal mapper)
    - `ProfileRecommendationService.computeOverlap`, `.matchesPhrase`, `.normalize`
    - `ExperienceMappingService.selectExperience`, `.bulletJobScore`, `.reorderSkills`, `.safeRequirementMapping`
-4. Validator still rejects: empty tailored output, unknown `experienceId`, company/role identity mismatch, chronology drift, missing `sourceBulletIds`.
-5. `npm run build` clean. `npm test` green.
+5. Validator still rejects: empty tailored output, unknown `experienceId`, company/role identity mismatch, chronology drift, missing `sourceBulletIds`.
+6. `npm run build` clean. `npm test` green.
 
 ## Pre-Flight (critical — do NOT skip)
 
 ### Starting state assumption
 
-When Sonnet starts, the working tree is clean and the branch is `refactor/llm-first-pipeline`. Verify:
+When work on this guide starts, the working tree is clean and the branch is `refactor/llm-first-pipeline`. Verify:
 
 ```bash
 git rev-parse --abbrev-ref HEAD   # expect: refactor/llm-first-pipeline
@@ -49,13 +56,13 @@ If either check fails, **stop and report**. Do not attempt to clean up yourself 
 
 ### If the user has not yet cut the branch
 
-Do not cut it from Sonnet. The uncommitted `feature/v1` tree state is the user's responsibility. Report back with:
+Do not cut it from the assistant. The uncommitted `feature/v1` tree state is the user's responsibility. Report back with:
 
 > "Tree is not clean / branch is not `refactor/llm-first-pipeline`. Requesting user confirmation that pre-flight is complete before proceeding."
 
 ## Structure
 
-Five phases, **one PR per phase**, human review between phases.
+Six phases, **one PR per phase**, human review between phases.
 
 Each phase ends with:
 
@@ -74,6 +81,100 @@ Commit template:
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 ```
+
+---
+
+## Phase 0 — Provider-neutral config seam
+
+**Goal:** Make provider choice explicit in configuration and dependency injection before further
+LLM-first simplification. OpenAI remains the only implemented backend in this phase.
+
+### Step 0.1 — Update `LlmModule` to select the active provider
+
+**File:** `src/llm/llm.module.ts`
+
+Replace the direct `useExisting` token bindings with `ConfigService`-backed factories that:
+
+- read `LLM_PROVIDER`
+- default to `openai`
+- resolve every LLM token to the OpenAI implementation when `LLM_PROVIDER=openai`
+- throw a clear error for any unsupported provider value
+
+Do **not** add new SDK dependencies or provider classes in this phase. The goal is to create the
+selection seam, not to implement Anthropic/Gemini/etc yet.
+
+### Step 0.2 — Update `.env.example`
+
+Add `LLM_PROVIDER=openai` at the top. Keep `OPENAI_API_KEY`, `OPENAI_MODEL`, and
+`OPENAI_TEMPERATURE` as the active provider settings for now, and note that only OpenAI is
+implemented today.
+
+### Step 0.3 — Update `README.md`
+
+Document the new provider selector in setup. Clarify:
+
+- only the selected provider's key should be required
+- only `openai` is supported in this phase
+- future providers should be added behind `src/llm/interfaces` and `src/llm/llm.module.ts`, not
+  threaded through jobs, ingest, tailoring, or validation logic
+
+### Step 0.4 — Verify & commit
+
+```bash
+npm run build
+npm test
+```
+
+If both pass, commit:
+
+```bash
+git add src/llm/llm.module.ts \
+        .env.example \
+        README.md \
+        execution-guide/llm-first-pipeline.md
+
+git commit -m "$(cat <<'EOF'
+refactor(llm): add provider-selection seam with openai default
+
+- LlmModule now resolves every LLM DI token through a ConfigService-backed
+  factory keyed on LLM_PROVIDER instead of hard-wiring OpenAI via
+  useExisting. OpenAI remains the default and only implemented backend.
+- Unsupported LLM_PROVIDER values fail fast in LlmModule with a clear
+  error listing the supported providers.
+- .env.example introduces LLM_PROVIDER=openai and documents that only the
+  OpenAI adapter is wired today.
+- README setup instructions explain the provider selector and direct
+  future Anthropic/Gemini/etc work to src/llm/interfaces plus
+  src/llm/llm.module.ts rather than threading vendor checks through
+  jobs, ingest, tailoring, or validation.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+EOF
+)"
+```
+
+### Step 0.5 — Report & stop
+
+Report back to the user with:
+
+- default provider behavior
+- unsupported-provider behavior
+- docs updated
+
+**Do not start Phase 1 without explicit user approval.**
+
+### Adding a second provider (future work — not in scope for Phase 0)
+
+When a second backend (e.g. Anthropic) is wired in:
+
+1. Extend the `SupportedLlmProvider` union in `src/llm/llm.module.ts` (e.g. `'openai' | 'anthropic'`).
+2. Add the new task providers under a sibling folder: `src/llm/anthropic/` (client + one class per `src/llm/interfaces/*` task, mirroring the OpenAI shape).
+3. Extend each factory's provider map in `LlmModule` (`{ openai: ..., anthropic: ... }`) and add the new class to `inject` + `providers`.
+4. Add the provider-specific key to `.env.example` commented-out until the adapter is wired, e.g. `# ANTHROPIC_API_KEY=`.
+
+Do not thread vendor checks through `jobs/`, `ingest/`, `tailoring/`, or `validation/`. The seam is `LlmModule` + `src/llm/interfaces`.
+
+> Deferred: normalizing `OPENAI_MODEL` into a provider-neutral `LLM_MODEL` is intentionally postponed until the second provider adapter lands. Do not introduce `LLM_MODEL` in Phase 0.
 
 ---
 
@@ -446,7 +547,7 @@ employerContext: 'unknown',
 ```bash
 npm run build
 npm test
-# End-to-end smoke — requires OPENAI_API_KEY and a clean data/ dir with an ingested resume:
+# End-to-end smoke — requires the API key for the configured LLM_PROVIDER and a clean data/ dir with an ingested resume:
 # node dist/src/main.js tailor --job-url 'https://cityjobs.nyc.gov/job/full-stack-developer-in-brooklyn-jid-41824' --profile general-swe --output md
 ```
 
