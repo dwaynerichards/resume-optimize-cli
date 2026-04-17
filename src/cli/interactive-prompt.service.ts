@@ -4,6 +4,8 @@ import { IngestCommandOptions, TailorCommandOptions } from '../common/dto/cli-op
 import {
   DiscoveredExperienceBlock,
   ExperienceControl,
+  ProfileRecommendation,
+  JobSignalAssessment,
   LengthTarget,
   OutputFormat,
   ProfileDefinition,
@@ -11,6 +13,19 @@ import {
 
 @Injectable()
 export class InteractivePromptService {
+  async promptForJobUrl(): Promise<string> {
+    const answers = await inquirer.prompt<{ jobUrl: string }>([
+      {
+        type: 'input',
+        name: 'jobUrl',
+        message: 'Job posting URL:',
+        validate: (value: string) => (value.startsWith('http') ? true : 'Provide a valid http(s) URL.'),
+      },
+    ]);
+
+    return answers.jobUrl;
+  }
+
   async promptForInitialIngest(): Promise<IngestCommandOptions> {
     const answers = await inquirer.prompt<{ resumePaths: string; resumeDirPaths: string }>([
       {
@@ -47,31 +62,55 @@ export class InteractivePromptService {
   async promptForTailoring(
     profiles: ProfileDefinition[],
     experienceBlocks: DiscoveredExperienceBlock[],
+    recommendation: ProfileRecommendation,
   ): Promise<TailorCommandOptions> {
+    let profileId: NonNullable<TailorCommandOptions['profileId']> = recommendation.profileId;
+
+    if (recommendation.shouldPrompt) {
+      const profileAnswer = await inquirer.prompt<{ profileId: string }>([
+        {
+          type: 'list',
+          name: 'profileId',
+          message: `Recommended profile: ${this.describeRecommendation(profiles, recommendation)} Choose a profile:`,
+          choices: profiles.map((profile) => ({
+            name: this.buildProfileChoiceLabel(profile, recommendation),
+            value: profile.id,
+          })),
+          default: recommendation.profileId,
+        },
+      ]);
+      profileId = profileAnswer.profileId as NonNullable<TailorCommandOptions['profileId']>;
+    } else {
+      const overrideAnswer = await inquirer.prompt<{ overrideProfile: boolean }>([
+        {
+          type: 'confirm',
+          name: 'overrideProfile',
+          message: `Recommended profile: ${this.describeRecommendation(profiles, recommendation)} Use a different profile?`,
+          default: false,
+        },
+      ]);
+
+      if (overrideAnswer.overrideProfile) {
+        const profileAnswer = await inquirer.prompt<{ profileId: string }>([
+          {
+            type: 'list',
+            name: 'profileId',
+            message: 'Select a different profile:',
+            choices: profiles.map((profile) => ({
+              name: this.buildProfileChoiceLabel(profile, recommendation),
+              value: profile.id,
+            })),
+            default: recommendation.profileId,
+          },
+        ]);
+        profileId = profileAnswer.profileId as NonNullable<TailorCommandOptions['profileId']>;
+      }
+    }
+
     const baseAnswers = await inquirer.prompt<{
-      jobUrl: string;
-      profileId: string;
       lengthTarget: LengthTarget;
       outputFormat: OutputFormat;
     }>([
-      {
-        type: 'input',
-        name: 'jobUrl',
-        message: 'Job posting URL:',
-        validate: (value: string) => (value.startsWith('http') ? true : 'Provide a valid http(s) URL.'),
-      },
-      {
-        type: 'list',
-        name: 'profileId',
-        message: 'Global profile:',
-        choices: profiles.map((profile) => ({
-          name:
-            profile.supportScore !== undefined
-              ? `${profile.label} (${Math.round(profile.supportScore * 100)}% support)`
-              : profile.label,
-          value: profile.id,
-        })),
-      },
       {
         type: 'list',
         name: 'lengthTarget',
@@ -147,11 +186,48 @@ export class InteractivePromptService {
     }
 
     return {
-      jobUrl: baseAnswers.jobUrl,
-      profileId: baseAnswers.profileId as TailorCommandOptions['profileId'],
+      profileId,
       lengthTarget: baseAnswers.lengthTarget,
       outputFormat: baseAnswers.outputFormat,
       experienceControls,
     };
+  }
+
+  async promptForLowSignalJob(jobTitle: string, signal: JobSignalAssessment): Promise<boolean> {
+    const reasonText =
+      signal.reasons.length > 0
+        ? `\n${signal.reasons.map((reason) => `- ${reason}`).join('\n')}`
+        : '';
+    const answers = await inquirer.prompt<{ proceed: boolean }>([
+      {
+        type: 'confirm',
+        name: 'proceed',
+        message: `Job page "${jobTitle}" looks ${signal.level} (${Math.round(signal.score * 100)}% signal). Continue anyway?${reasonText}`,
+        default: false,
+      },
+    ]);
+
+    return answers.proceed;
+  }
+
+  private describeRecommendation(
+    profiles: ProfileDefinition[],
+    recommendation: ProfileRecommendation,
+  ): string {
+    const profile = profiles.find((item) => item.id === recommendation.profileId);
+    const label = profile?.label ?? recommendation.profileId;
+    return `${label} (${Math.round(recommendation.confidence * 100)}% confidence)`;
+  }
+
+  private buildProfileChoiceLabel(
+    profile: ProfileDefinition,
+    recommendation: ProfileRecommendation,
+  ): string {
+    const supportSuffix =
+      profile.supportScore !== undefined
+        ? ` (${Math.round(profile.supportScore * 100)}% support)`
+        : '';
+    const recommendedSuffix = profile.id === recommendation.profileId ? ' [recommended]' : '';
+    return `${profile.label}${supportSuffix}${recommendedSuffix}`;
   }
 }

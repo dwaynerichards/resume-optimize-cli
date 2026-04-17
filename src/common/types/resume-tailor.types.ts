@@ -4,6 +4,9 @@ export type SupportedProfileId =
   | 'general-swe'
   | 'blockchain-engineer';
 
+export type JobSignalLevel = 'strong' | 'weak' | 'thin';
+export type JobSignalPolicy = 'warn' | 'confirm' | 'abort';
+
 export type RiskLevel = 'low' | 'medium' | 'high';
 export type LengthTarget = 'concise' | 'standard' | 'expanded';
 export type OutputFormat = 'md' | 'docx' | 'both';
@@ -137,6 +140,19 @@ export interface ProfileDefinition {
   hiddenIfUnsupported: boolean;
 }
 
+export interface ProfileRecommendationCandidate {
+  profileId: SupportedProfileId;
+  score: number;
+}
+
+export interface ProfileRecommendation {
+  profileId: SupportedProfileId;
+  confidence: number;
+  rationale: string[];
+  shouldPrompt: boolean;
+  alternatives: ProfileRecommendationCandidate[];
+}
+
 export interface CanonicalResume {
   identity: IdentityInfo;
   contact: ContactInfo;
@@ -226,6 +242,12 @@ export interface RawJobDocument {
   bodyText: string;
 }
 
+export interface JobSignalAssessment {
+  level: JobSignalLevel;
+  score: number;
+  reasons: string[];
+}
+
 export interface NormalizedJobPosting {
   sourceUrl: string;
   fetchedAt: string;
@@ -242,6 +264,7 @@ export interface NormalizedJobPosting {
   domainClassification: string[];
   confidence: number;
   rawText?: string;
+  signal?: JobSignalAssessment;
 }
 
 export interface RequirementMapping {
@@ -325,7 +348,8 @@ export interface TailoringArtifacts {
 }
 
 export interface TailoringRequest {
-  jobUrl: string;
+  jobUrl?: string;
+  job?: NormalizedJobPosting;
   profileId: SupportedProfileId;
   experienceControls: ExperienceControl[];
   lengthTarget: LengthTarget;

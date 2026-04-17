@@ -144,10 +144,6 @@ const extractTechnologyClaims = (text: string): string[] => {
   const directMatches = text.match(
     /\b(?:AWS|Azure|GCP|Node\.js|TypeScript|JavaScript|Python|Java|Kotlin|Go|Rust|React|Angular|Vue|Docker|Kubernetes|PostgreSQL|MySQL|MongoDB|Redis|Kafka|Terraform|GraphQL|REST|gRPC|Solidity|Ethereum|Hyperledger|C#|C\+\+)\b/g,
   );
-  const capitalizedTokens = tokenize(text)
-    .filter((token) => token.length > 2)
-    .filter((token) => /^[a-z0-9.+#-]+$/i.test(token))
-    .filter((token) => !['designed', 'built', 'led', 'service', 'platform', 'systems'].includes(token));
 
-  return uniqueStrings([...(directMatches ?? []), ...capitalizedTokens]);
+  return uniqueStrings([...(directMatches ?? [])]);
 };

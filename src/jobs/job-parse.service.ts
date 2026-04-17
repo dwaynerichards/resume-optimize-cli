@@ -6,6 +6,7 @@ import { normalizeWhitespace, uniqueStrings } from '../common/utils';
 import { JobAnalysisProvider } from '../llm/interfaces';
 import { JobClassificationService } from './job-classification.service';
 import { JobFetchService } from './job-fetch.service';
+import { JobSignalService } from './job-signal.service';
 
 @Injectable()
 export class JobParseService {
@@ -14,13 +15,17 @@ export class JobParseService {
     @Inject(JOB_ANALYSIS_PROVIDER)
     private readonly jobAnalysisProvider: JobAnalysisProvider,
     private readonly jobClassificationService: JobClassificationService,
+    private readonly jobSignalService: JobSignalService,
   ) {}
 
   async fetchAndNormalize(url: string): Promise<NormalizedJobPosting> {
     const html = await this.jobFetchService.fetch(url);
     const rawJob = this.parse(url, html);
     const analyzed = await this.jobAnalysisProvider.analyze(rawJob);
-    return this.jobClassificationService.merge(rawJob, analyzed);
+    return {
+      ...this.jobClassificationService.merge(rawJob, analyzed),
+      signal: this.jobSignalService.assess(rawJob),
+    };
   }
 
   parse(sourceUrl: string, html: string): RawJobDocument {

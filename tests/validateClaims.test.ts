@@ -103,4 +103,55 @@ describe('ResumeValidationService', () => {
     expect(result.issues.some((issue) => issue.code === 'unsupported_technology')).toBe(true);
     expect(result.issues.some((issue) => issue.code === 'unsupported_year')).toBe(true);
   });
+
+  it('rejects empty tailored output as an effective failure', async () => {
+    const canonicalResume: CanonicalResume = {
+      identity: { fullName: 'Jordan Example' },
+      contact: { email: 'jordan@example.com' },
+      education: [],
+      certifications: [],
+      summaryVariants: [],
+      skills: [],
+      experience: [],
+      roleClusters: [],
+      domainTags: [],
+      optionalSections: [],
+      sourceReferences: [],
+    };
+    const bulletBank: BulletBankDocument = { bullets: [] };
+    const tailoredResume: TailoredResumeDocument = {
+      profileId: 'backend-engineer',
+      identity: canonicalResume.identity,
+      contact: canonicalResume.contact,
+      summary: '   ',
+      skills: [],
+      experience: [],
+      education: [],
+      certifications: [],
+      job: {
+        sourceUrl: 'https://example.com/jobs/backend',
+        fetchedAt: '2026-04-09T00:00:00.000Z',
+        jobTitle: 'Senior Backend Engineer',
+        responsibilities: [],
+        minimumQualifications: [],
+        preferredQualifications: [],
+        domainKeywords: [],
+        atsKeywords: [],
+        seniorityIndicators: [],
+        domainClassification: [],
+        confidence: 0.8,
+      },
+      requirementMappings: [],
+      selectedBlocks: [],
+      omittedBlocks: [],
+      lengthTarget: 'standard',
+      generatedAt: '2026-04-09T00:00:00.000Z',
+    };
+    const service = new ResumeValidationService(new ClaimTraceabilityService());
+
+    const result = await service.validate(tailoredResume, canonicalResume, bulletBank);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.some((issue) => issue.code === 'empty_tailored_output')).toBe(true);
+  });
 });

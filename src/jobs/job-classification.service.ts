@@ -9,14 +9,22 @@ export class JobClassificationService {
 
   merge(rawJob: RawJobDocument, normalizedJob: NormalizedJobPosting): NormalizedJobPosting {
     const heuristicKeywords = this.keywordExtractionService.extractKeywords(rawJob);
+    const atsKeywords = Array.isArray(normalizedJob.atsKeywords) ? normalizedJob.atsKeywords : [];
+    const domainKeywords = Array.isArray(normalizedJob.domainKeywords) ? normalizedJob.domainKeywords : [];
+    const seniorityIndicators = Array.isArray(normalizedJob.seniorityIndicators)
+      ? normalizedJob.seniorityIndicators
+      : [];
+    const domainClassificationInput = Array.isArray(normalizedJob.domainClassification)
+      ? normalizedJob.domainClassification
+      : [];
     const jobTitle =
       normalizedJob.jobTitle ||
       rawJob.headings[0] ||
       rawJob.pageTitle ||
       'Untitled Role';
     const domainClassification =
-      normalizedJob.domainClassification.length > 0
-        ? normalizedJob.domainClassification
+      domainClassificationInput.length > 0
+        ? domainClassificationInput
         : this.heuristicDomainClassification(heuristicKeywords);
 
     return {
@@ -25,9 +33,9 @@ export class JobClassificationService {
       pageTitle: normalizedJob.pageTitle || rawJob.pageTitle,
       fetchedAt: normalizedJob.fetchedAt || rawJob.fetchedAt,
       sourceUrl: normalizedJob.sourceUrl || rawJob.sourceUrl,
-      atsKeywords: uniqueStrings([...normalizedJob.atsKeywords, ...heuristicKeywords]),
-      domainKeywords: uniqueStrings([...normalizedJob.domainKeywords, ...heuristicKeywords.slice(0, 12)]),
-      seniorityIndicators: uniqueStrings(normalizedJob.seniorityIndicators),
+      atsKeywords: uniqueStrings([...atsKeywords, ...heuristicKeywords]),
+      domainKeywords: uniqueStrings([...domainKeywords, ...heuristicKeywords.slice(0, 12)]),
+      seniorityIndicators: uniqueStrings(seniorityIndicators),
       domainClassification,
       confidence: normalizedJob.confidence || 0.65,
       rawText: rawJob.bodyText,

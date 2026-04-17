@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { extname, resolve } from 'path';
 import pdf from 'pdf-parse';
 import { readFile } from 'fs/promises';
-import { normalizeWhitespace, readTextFile } from '../common/utils';
+import { normalizeDocumentText, normalizeWhitespace, readTextFile } from '../common/utils';
 
 @Injectable()
 export class ResumeTextExtractionService {
@@ -11,7 +11,7 @@ export class ResumeTextExtractionService {
     const extension = extname(resolvedPath).toLowerCase();
 
     if (extension === '.md' || extension === '.markdown' || extension === '.txt') {
-      return normalizeWhitespace(await readTextFile(resolvedPath));
+      return normalizeDocumentText(await readTextFile(resolvedPath));
     }
 
     if (extension === '.pdf') {

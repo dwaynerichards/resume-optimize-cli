@@ -52,6 +52,18 @@ npm run start
 
 Long-running commands now print step-by-step terminal progress so ingest and tailoring do not look stalled while network and file work are running.
 
+Logs are separate from progress: user-facing progress and summaries stay on stdout, while run logs go to stderr.
+
+Set the log level with `RESUME_TAILOR_LOG_LEVEL`:
+
+```env
+RESUME_TAILOR_LOG_LEVEL=info
+```
+
+Supported values are `debug`, `info`, `warn`, and `error`. The default is `info`, and `debug` only turns on when you opt in.
+
+If you prefer a generic override, `LOG_LEVEL` is also accepted as a fallback.
+
 Run the CLI directly from TypeScript during development:
 
 ```bash
@@ -178,6 +190,14 @@ npm run start -- tailor \
 ```
 
 `--output md,docx` resolves to both formats.
+
+If a job page is reachable but looks too thin to trust, the CLI can:
+
+- `--job-signal warn` to log the low-signal page and continue
+- `--job-signal confirm` to prompt before continuing
+- `--job-signal abort` to stop the run before tailoring starts
+
+The interactive flow defaults to asking for confirmation when the signal is low.
 
 ## Profiles and experience controls
 

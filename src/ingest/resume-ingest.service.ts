@@ -5,6 +5,7 @@ import { createChecksum } from '../common/utils';
 import { ResumeExtractionProvider } from '../llm/interfaces';
 import { ProfileRegistryService } from '../profiles/profile-registry.service';
 import { normalizeExtractedResumeDocument } from './resume-extraction-normalizer';
+import { ResumeExtractionDebugArtifactService } from './resume-extraction-debug-artifact.service';
 import { ResumeMasterBuilderService } from './resume-master-builder.service';
 import { ResumeMergeService } from './resume-merge.service';
 import { ResumeSourceDiscoveryService } from './resume-source-discovery.service';
@@ -17,6 +18,7 @@ export class ResumeIngestService {
     @Inject(RESUME_EXTRACTION_PROVIDER)
     private readonly extractionProvider: ResumeExtractionProvider,
     private readonly resumeSourceDiscoveryService: ResumeSourceDiscoveryService,
+    private readonly resumeExtractionDebugArtifactService: ResumeExtractionDebugArtifactService,
     private readonly resumeMergeService: ResumeMergeService,
     private readonly masterBuilderService: ResumeMasterBuilderService,
     private readonly profileRegistryService: ProfileRegistryService,
@@ -60,6 +62,12 @@ export class ResumeIngestService {
         resumePath,
       );
 
+      await this.resumeExtractionDebugArtifactService.writeArtifact({
+        sourceFile: resumePath,
+        textLength: text.length,
+        normalizedPayload: extraction,
+      });
+
       extractedResumes.push({
         ...extraction,
         sourceFile: resumePath,
@@ -72,12 +80,23 @@ export class ResumeIngestService {
       });
     }
 
+    if (!hasMeaningfulCorpus(extractedResumes)) {
+      throw new Error('Ingest produced an empty corpus. No meaningful resume content was extracted.');
+    }
+
     const baseProfiles = this.profileRegistryService.getBaseProfiles();
     _options?.onProgress?.('Merging canonical resume data');
     const { canonicalResume, bulletBank, mergeAssist } = await this.resumeMergeService.merge(
       extractedResumes,
       baseProfiles,
     );
+
+    if (!hasMeaningfulCanonicalContent(canonicalResume)) {
+      throw new Error(
+        'Ingest produced an empty canonical resume. No meaningful canonical content was built.',
+      );
+    }
+
     const profileDefaults = this.profileRegistryService.buildProfileDefaults(
       canonicalResume,
       mergeAssist.supportSignals,
@@ -92,3 +111,23 @@ export class ResumeIngestService {
     };
   }
 }
+
+const hasMeaningfulCorpus = (resumes: Array<{ experience: unknown[]; skills: unknown[]; summaryVariants: unknown[]; certifications: unknown[] }>): boolean =>
+  resumes.some(
+    (resume) =>
+      resume.experience.length > 0 ||
+      resume.skills.length > 0 ||
+      resume.summaryVariants.length > 0 ||
+      resume.certifications.length > 0,
+  );
+
+const hasMeaningfulCanonicalContent = (canonicalResume: {
+  experience: unknown[];
+  skills: unknown[];
+  summaryVariants: unknown[];
+  certifications: unknown[];
+}): boolean =>
+  canonicalResume.experience.length > 0 ||
+  canonicalResume.skills.length > 0 ||
+  canonicalResume.summaryVariants.length > 0 ||
+  canonicalResume.certifications.length > 0;

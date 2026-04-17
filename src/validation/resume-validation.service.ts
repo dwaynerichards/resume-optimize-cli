@@ -17,6 +17,15 @@ export class ResumeValidationService {
     bulletBank: BulletBankDocument,
   ): Promise<ValidationResult> {
     const issues = [...this.validateStructure(tailoredResume, canonicalResume)];
+
+    if (!hasMeaningfulTailoredContent(tailoredResume)) {
+      issues.push({
+        severity: 'error',
+        code: 'empty_tailored_output',
+        message: 'Tailored resume has no experience bullets and cannot be treated as a successful output.',
+      });
+    }
+
     const traceability = this.claimTraceabilityService.validate(
       tailoredResume,
       canonicalResume,
@@ -75,3 +84,6 @@ export class ResumeValidationService {
     return issues;
   }
 }
+
+const hasMeaningfulTailoredContent = (tailoredResume: TailoredResumeDocument): boolean =>
+  tailoredResume.experience.some((entry) => entry.bullets.length > 0);

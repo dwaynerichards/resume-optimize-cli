@@ -47,8 +47,15 @@ export class ResumeTailorService {
       resolve(dataDir, PROFILE_DEFAULTS_FILENAME),
     );
     const profile = this.profileResolutionService.resolveProfile(profileDefaults, request.profileId);
-    onProgress?.('Fetching and analyzing the job posting');
-    const job = await this.jobParseService.fetchAndNormalize(request.jobUrl);
+    onProgress?.(request.job ? 'Using preloaded job posting' : 'Fetching and analyzing the job posting');
+    const job =
+      request.job ??
+      (request.jobUrl ? await this.jobParseService.fetchAndNormalize(request.jobUrl) : undefined);
+
+    if (!job) {
+      throw new Error('Tailoring request requires a jobUrl or a preloaded job posting.');
+    }
+
     onProgress?.('Mapping experience to job requirements');
     const prepared = await this.experienceMappingService.prepareRewriteInput(
       canonicalResume,
@@ -60,7 +67,9 @@ export class ResumeTailorService {
     );
 
     onProgress?.('Generating tailored resume content');
-    const tailored = await this.resumeRewriteProvider.tailor(prepared.rewriteInput);
+    const tailored = normalizeTailoredResumeDocument(
+      await this.resumeRewriteProvider.tailor(prepared.rewriteInput),
+    );
     const experienceOrder = new Map(
       prepared.rewriteInput.canonicalResume.experience.map((entry, index) => [entry.id, index]),
     );
@@ -100,3 +109,27 @@ export class ResumeTailorService {
     };
   }
 }
+
+const normalizeTailoredResumeDocument = (
+  value: Partial<TailoredResumeDocument> | undefined,
+): Partial<TailoredResumeDocument> => ({
+  ...value,
+  summary: value?.summary ?? '',
+  skills: Array.isArray(value?.skills) ? value.skills : [],
+  education: Array.isArray(value?.education) ? value.education : [],
+  certifications: Array.isArray(value?.certifications) ? value.certifications : [],
+  requirementMappings: Array.isArray(value?.requirementMappings) ? value.requirementMappings : [],
+  experience: Array.isArray(value?.experience)
+    ? value.experience.map((entry) => ({
+        ...entry,
+        bullets: Array.isArray(entry?.bullets)
+          ? entry.bullets.map((bullet) => ({
+              ...bullet,
+              text: bullet?.text ?? '',
+              sourceBulletIds: Array.isArray(bullet?.sourceBulletIds) ? bullet.sourceBulletIds : [],
+              tags: Array.isArray(bullet?.tags) ? bullet.tags : [],
+            }))
+          : [],
+      }))
+    : [],
+});

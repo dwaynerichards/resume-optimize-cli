@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { JobClassificationService } from '../src/jobs/job-classification.service';
 import { JobParseService } from '../src/jobs/job-parse.service';
+import { JobSignalService } from '../src/jobs/job-signal.service';
 import { KeywordExtractionService } from '../src/jobs/keyword-extraction.service';
 
 describe('JobParseService', () => {
@@ -28,6 +29,7 @@ describe('JobParseService', () => {
         }),
       },
       new JobClassificationService(new KeywordExtractionService()),
+      new JobSignalService(),
     );
 
     const result = await service.fetchAndNormalize('https://example.com/jobs/backend');
@@ -36,5 +38,6 @@ describe('JobParseService', () => {
     expect(result.employer).toBe('Example Corp');
     expect(result.atsKeywords).toContain('typescript');
     expect(result.domainClassification).toContain('backend-engineering');
+    expect(result.signal?.level).toBe('strong');
   });
 });

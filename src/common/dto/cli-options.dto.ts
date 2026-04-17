@@ -1,7 +1,9 @@
 import {
   ExperienceControl,
+  JobSignalPolicy,
   LengthTarget,
   OutputFormat,
+  NormalizedJobPosting,
   SupportedProfileId,
 } from '../types';
 
@@ -13,6 +15,8 @@ export interface IngestCommandOptions {
 
 export interface TailorCommandOptions {
   jobUrl?: string;
+  job?: NormalizedJobPosting;
+  jobSignalPolicy?: JobSignalPolicy;
   profileId?: SupportedProfileId;
   experienceControls?: ExperienceControl[];
   experienceConfigPath?: string;

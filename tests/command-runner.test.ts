@@ -55,6 +55,32 @@ describe('CommandRunnerService', () => {
     });
   });
 
+  it('parses the job signal policy for tailor commands', async () => {
+    const cliService = {
+      runInteractive: jest.fn(),
+      runIngest: jest.fn(),
+      runTailor: jest.fn(),
+      runInspectCorpus: jest.fn(),
+      printHelp: jest.fn(),
+    };
+    const runner = new CommandRunnerService(cliService as never);
+
+    await runner.run([
+      'tailor',
+      '--job-url',
+      'https://example.com/jobs/backend',
+      '--job-signal',
+      'confirm',
+    ]);
+
+    expect(cliService.runTailor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobUrl: 'https://example.com/jobs/backend',
+        jobSignalPolicy: 'confirm',
+      }),
+    );
+  });
+
   it('runs corpus inspection for inspect corpus', async () => {
     const cliService = {
       runInteractive: jest.fn(),

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { resolve } from 'path';
 import { IngestCommandOptions, TailorCommandOptions } from './common/dto/cli-options.dto';
+import { runLogger } from './common/logging';
 import {
   BULLET_BANK_FILENAME,
   DEFAULT_DATA_DIR,
@@ -39,6 +40,8 @@ export class AppService {
     profileDefaultsPath: string;
   }> {
     const progress = new TerminalProgress();
+    const startedAtMs = Date.now();
+    runLogger.info('ingest boundary start');
 
     try {
       progress.start('Preparing resume ingest');
@@ -48,21 +51,39 @@ export class AppService {
         onProgress: (message) => progress.update(message),
       });
       progress.succeed('Resume ingest completed');
+      runLogger.info('ingest boundary end', {
+        durationMs: Date.now() - startedAtMs,
+        sourceFiles: result.sourceFiles.length,
+        resumeMasterPath: result.resumeMasterPath,
+        bulletBankPath: result.bulletBankPath,
+        profileDefaultsPath: result.profileDefaultsPath,
+      });
       return result;
     } catch (error) {
       progress.fail('Resume ingest failed');
+      runLogger.error('ingest boundary failed', {
+        durationMs: Date.now() - startedAtMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
 
   async tailorResume(options: TailorCommandOptions): Promise<TailoringArtifacts> {
-    if (!options.jobUrl || !options.profileId || !options.lengthTarget || !options.outputFormat) {
-      throw new Error('Tailor command requires jobUrl, profileId, lengthTarget, and outputFormat.');
+    if ((!options.jobUrl && !options.job) || !options.profileId || !options.lengthTarget || !options.outputFormat) {
+      throw new Error('Tailor command requires a jobUrl or preloaded job, profileId, lengthTarget, and outputFormat.');
     }
 
     const progress = new TerminalProgress();
+    const startedAtMs = Date.now();
     const dataDir = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR);
     const outputDir = resolve(process.cwd(), process.env.OUTPUT_DIR ?? DEFAULT_OUTPUT_DIR);
+    runLogger.info('tailor boundary start', {
+      profileId: options.profileId,
+      lengthTarget: options.lengthTarget,
+      outputFormat: options.outputFormat,
+      skipValidation: Boolean(options.skipValidation),
+    });
 
     try {
       progress.start('Preparing tailoring run');
@@ -84,6 +105,7 @@ export class AppService {
       const tailoredResume = await this.resumeTailorService.generate(
         {
           jobUrl: options.jobUrl,
+          job: options.job,
           profileId: options.profileId,
           experienceControls: options.experienceControls ?? [],
           lengthTarget: options.lengthTarget,
@@ -94,6 +116,11 @@ export class AppService {
         },
       );
 
+      if (options.skipValidation) {
+        runLogger.info('tailor boundary skipping validation');
+      } else {
+        runLogger.info('tailor boundary validating resume');
+      }
       progress.update(options.skipValidation ? 'Skipping validation' : 'Validating tailored resume');
       const validation = options.skipValidation
         ? { valid: true, issues: [], traceabilityCoverage: 1 }
@@ -101,6 +128,11 @@ export class AppService {
 
       if (!validation.valid) {
         progress.succeed('Tailoring completed with validation errors');
+        runLogger.warn('tailor boundary completed with validation errors', {
+          durationMs: Date.now() - startedAtMs,
+          validationValid: validation.valid,
+          validationIssueCount: validation.issues.length,
+        });
         return { validation };
       }
 
@@ -110,6 +142,7 @@ export class AppService {
         `${new Date().toISOString().replace(/[:.]/g, '-')}-${selectedProfile.id}`,
       );
       await ensureDirectory(runFolder);
+      runLogger.info('tailor boundary output directory ready', { runFolder });
 
       const markdownPath = resolve(runFolder, 'tailored_resume.md');
       const docxPath = resolve(runFolder, 'tailored_resume.docx');
@@ -117,10 +150,12 @@ export class AppService {
 
       progress.update('Writing Markdown resume');
       await this.markdownExportService.writeToFile(markdownPath, tailoredResume);
+      runLogger.info('tailor boundary markdown written', { markdownPath });
 
       if (options.outputFormat === 'docx' || options.outputFormat === 'both') {
         progress.update('Writing DOCX resume');
         await this.docxExportService.writeToFile(docxPath, tailoredResume);
+        runLogger.info('tailor boundary docx written', { docxPath });
       }
 
       progress.update('Generating change report');
@@ -132,8 +167,17 @@ export class AppService {
       });
       progress.update('Writing change report');
       await this.markdownExportService.writeReportToFile(reportPath, changeReport);
+      runLogger.info('tailor boundary report written', { reportPath });
 
       progress.succeed('Tailored resume generated');
+      runLogger.info('tailor boundary end', {
+        durationMs: Date.now() - startedAtMs,
+        markdownPath,
+        docxPath: options.outputFormat === 'md' ? undefined : docxPath,
+        reportPath,
+        validationValid: validation.valid,
+        validationIssueCount: validation.issues.length,
+      });
       return {
         markdownPath,
         docxPath: options.outputFormat === 'md' ? undefined : docxPath,
@@ -142,6 +186,10 @@ export class AppService {
       };
     } catch (error) {
       progress.fail('Tailoring failed');
+      runLogger.error('tailor boundary failed', {
+        durationMs: Date.now() - startedAtMs,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }

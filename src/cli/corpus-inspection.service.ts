@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { resolve } from 'path';
 import { DEFAULT_DATA_DIR, BULLET_BANK_FILENAME, PROFILE_DEFAULTS_FILENAME, RESUME_MASTER_FILENAME } from '../common/constants';
+import { runLogger } from '../common/logging';
 import { ResumeDataLoaderService } from '../tailoring/resume-data-loader.service';
 import { ExperienceControlDiscoveryService } from '../profiles/experience-control-discovery.service';
 import { ProfileResolutionService } from '../profiles/profile-resolution.service';
@@ -33,7 +34,12 @@ export class CorpusInspectionService {
   ) {}
 
   async inspect(dataDirInput = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR)): Promise<CorpusInspectionSummary> {
+    const startedAtMs = Date.now();
+    runLogger.info('corpus inspection boundary start', { dataDir: dataDirInput });
     if (!(await this.resumeDataLoaderService.canonicalExists(dataDirInput))) {
+      runLogger.warn('corpus inspection aborted because canonical corpus is missing', {
+        dataDir: dataDirInput,
+      });
       throw new Error('Canonical corpus not found. Run ingest first.');
     }
 
@@ -47,7 +53,7 @@ export class CorpusInspectionService {
     );
     const discoveredBlocks = this.experienceControlDiscoveryService.discover(canonicalResume);
 
-    return {
+    const summary = {
       dataDir,
       sourceFiles: profileDefaults.sourceFiles,
       experienceCount: canonicalResume.experience.length,
@@ -66,5 +72,17 @@ export class CorpusInspectionService {
       })),
       profileDefaultsSourceFiles: profileDefaults.sourceFiles,
     };
+
+    runLogger.info('corpus inspection boundary end', {
+      durationMs: Date.now() - startedAtMs,
+      dataDir,
+      sourceFiles: summary.sourceFiles.length,
+      experienceCount: summary.experienceCount,
+      bulletCount: summary.bulletCount,
+      roleClusterCount: summary.roleClusterCount,
+      profileCount: summary.profileCount,
+    });
+
+    return summary;
   }
 }

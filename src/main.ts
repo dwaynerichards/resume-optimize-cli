@@ -1,24 +1,38 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
+import { INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { CommandRunnerService } from './cli/command-runner.service';
+import { runLogger } from './common/logging';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['error', 'warn'],
+  runLogger.configureFromEnv();
+  runLogger.beginRun('cli', {
+    argvCount: process.argv.slice(2).length,
   });
 
+  let app: INestApplicationContext | undefined;
+
   try {
+    app = await runLogger.measure('bootstrap application context', () =>
+      NestFactory.createApplicationContext(AppModule, {
+        logger: ['error', 'warn'],
+      }),
+    );
     const commandRunner = app.get(CommandRunnerService);
-    await commandRunner.run(process.argv.slice(2));
+    await runLogger.measure('dispatch command', () => commandRunner.run(process.argv.slice(2)));
+    runLogger.endRun('ok');
+  } catch (error) {
+    runLogger.endRun('error', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
   } finally {
-    await app.close();
+    await app?.close();
   }
 }
 
-bootstrap().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
+bootstrap().catch(() => {
   process.exitCode = 1;
 });
