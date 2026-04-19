@@ -248,6 +248,26 @@ export interface JobSignalAssessment {
   reasons: string[];
 }
 
+export type RoleClassification =
+  | 'software-engineering'
+  | 'backend-engineering'
+  | 'frontend-engineering'
+  | 'full-stack-engineering'
+  | 'blockchain-engineering'
+  | 'data-engineering'
+  | 'devops-sre'
+  | 'non-technical'
+  | 'unknown';
+
+export type EmployerContext =
+  | 'public-sector'
+  | 'private-sector'
+  | 'non-profit'
+  | 'education'
+  | 'startup'
+  | 'enterprise'
+  | 'unknown';
+
 export interface NormalizedJobPosting {
   sourceUrl: string;
   fetchedAt: string;
@@ -261,6 +281,9 @@ export interface NormalizedJobPosting {
   domainKeywords: string[];
   atsKeywords: string[];
   seniorityIndicators: string[];
+  roleClassification: RoleClassification;
+  employerContext: EmployerContext;
+  /** @deprecated derived from roleClassification + employerContext for one release. */
   domainClassification: string[];
   confidence: number;
   rawText?: string;

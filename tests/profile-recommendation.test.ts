@@ -25,6 +25,8 @@ describe('ProfileRecommendationService', () => {
       domainKeywords: [],
       atsKeywords: [],
       seniorityIndicators: [],
+      roleClassification: 'software-engineering',
+      employerContext: 'unknown',
       domainClassification: ['software-engineering'],
       confidence: 0.8,
       rawText: '',

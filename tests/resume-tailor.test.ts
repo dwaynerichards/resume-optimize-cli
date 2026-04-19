@@ -79,6 +79,8 @@ describe('ResumeTailorService', () => {
         domainKeywords: [],
         atsKeywords: [],
         seniorityIndicators: [],
+        roleClassification: 'unknown',
+        employerContext: 'unknown',
         domainClassification: [],
         confidence: 0.8,
       },

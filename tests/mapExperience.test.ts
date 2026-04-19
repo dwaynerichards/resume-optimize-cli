@@ -166,6 +166,8 @@ describe('ExperienceMappingService', () => {
         domainKeywords: ['backend'],
         atsKeywords: ['node.js', 'typescript'],
         seniorityIndicators: ['senior'],
+        roleClassification: 'backend-engineering',
+        employerContext: 'unknown',
         domainClassification: ['backend-engineering'],
         confidence: 0.8,
       },
