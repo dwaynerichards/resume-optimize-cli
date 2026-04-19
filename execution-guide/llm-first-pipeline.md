@@ -62,7 +62,10 @@ Do not cut it from the assistant. The uncommitted `feature/v1` tree state is the
 
 ## Structure
 
-Six phases, **one PR per phase**, human review between phases.
+Seven phases, **one PR per phase**, human review between phases. Phases
+0–5 are the core LLM-first refactor; Phase 6 is an additive extension
+(clipping-as-job-input) that runs after Phase 5 ships and the validator
+gate is in place.
 
 Each phase ends with:
 
@@ -1010,6 +1013,351 @@ Verify:
 - Change report narrates what changed
 
 Report final result and **stop**. User opens the PR.
+
+---
+
+## Phase 6 — Clipping-as-Job-Input (additive extension)
+
+**Goal:** Let `resume-tailor` accept Obsidian Web Clipper markdown
+files as a job-posting input source alongside the existing URL fetch
+path. The clipping is preferred when present; URL fetch remains the
+fallback for un-clipped jobs and batch runs.
+
+**Why this is Phase 6, not Phase 1.5:** Phases 0–5 establish the
+LLM-first contract and the validator as the sole factuality gate. The
+clipping path is a new *input source* on top of that contract — it
+should ride on a stable pipeline, not chase one in flux. Source design
+captured in
+`session-handoff/2026-04-19T13-42 - clipping-as-job-input-design.md`.
+
+**Pre-flight:** Phases 0–5 are merged. `npm run build` clean,
+`npm test` green, validator gate in place. NYC URL end-to-end run
+succeeded in Phase 5.3.
+
+### Step 6.1 — Add `JobLoadService` upstream of `JobParseService`
+
+**File (new):** `src/jobs/job-load.service.ts`
+
+Defines the input-detection seam. `JobParseService` no longer fetches
+or reads — it consumes a `LoadedJobInput` discriminated union.
+
+```ts
+import { Injectable } from '@nestjs/common';
+import { promises as fs } from 'node:fs';
+import { JobFetchService } from './job-fetch.service';
+
+export type LoadedJobInput =
+  | {
+      kind: 'url';
+      sourceUrl: string;
+      html: string;
+      fetchedAt: string;
+    }
+  | {
+      kind: 'clipping';
+      sourceUrl: string;       // resolved from frontmatter `source:`
+      clippedAt: string;        // resolved from frontmatter `clipped:`
+      domainHint: string | null; // resolved from frontmatter `domain:` (often null)
+      bodyMarkdown: string;
+      filePath: string;
+      loadedAt: string;
+    };
+
+@Injectable()
+export class JobLoadService {
+  constructor(private readonly fetcher: JobFetchService) {}
+
+  async load(input: { url?: string; clipPath?: string }): Promise<LoadedJobInput> {
+    if (input.clipPath && input.url) {
+      throw new Error('Provide either --job-url or --job-clip, not both.');
+    }
+    if (input.clipPath) return this.loadClipping(input.clipPath);
+    if (input.url) return this.loadUrl(input.url);
+    throw new Error('Provide --job-url or --job-clip.');
+  }
+
+  private async loadUrl(url: string): Promise<LoadedJobInput> {
+    const { html, fetchedAt } = await this.fetcher.fetch(url);
+    return { kind: 'url', sourceUrl: url, html, fetchedAt };
+  }
+
+  private async loadClipping(filePath: string): Promise<LoadedJobInput> {
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const { frontmatter, body } = parseFrontmatter(raw);
+    const sourceUrl =
+      typeof frontmatter.source === 'string' ? frontmatter.source : null;
+    const clippedAt =
+      typeof frontmatter.clipped === 'string' ? frontmatter.clipped : null;
+    if (!sourceUrl) {
+      throw new Error(
+        `Clipping at ${filePath} is missing required frontmatter field 'source:'.`,
+      );
+    }
+    if (!clippedAt) {
+      throw new Error(
+        `Clipping at ${filePath} is missing required frontmatter field 'clipped:'.`,
+      );
+    }
+    const domainHint =
+      typeof frontmatter.domain === 'string' && frontmatter.domain.length > 0
+        ? frontmatter.domain
+        : null;
+    return {
+      kind: 'clipping',
+      sourceUrl,
+      clippedAt,
+      domainHint,
+      bodyMarkdown: body,
+      filePath,
+      loadedAt: new Date().toISOString(),
+    };
+  }
+}
+
+// Minimal YAML-frontmatter splitter. Use a real YAML lib if one is
+// already in the dep graph; otherwise this stays narrow on purpose.
+function parseFrontmatter(raw: string): {
+  frontmatter: Record<string, unknown>;
+  body: string;
+} {
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, body: raw };
+  // Lazy parse: split on top-level keys. Real impl should use `yaml` or
+  // `gray-matter`. Keep ergonomics simple — clipping frontmatter is
+  // shallow and string-valued.
+  const fm: Record<string, unknown> = {};
+  for (const line of match[1].split('\n')) {
+    const m = line.match(/^([a-zA-Z_-]+):\s*(.*)$/);
+    if (!m) continue;
+    const [, key, valueRaw] = m;
+    const value = valueRaw.trim().replace(/^"(.*)"$/, '$1');
+    fm[key] = value === '' ? null : value;
+  }
+  return { frontmatter: fm, body: match[2] };
+}
+```
+
+If `gray-matter` or the `yaml` package is already a transitive
+dependency, swap the lazy parser for it — but **do not** add a new
+runtime dep just for this. The clipping schema is shallow and
+predictable per `AI-Workflow-Vault/raw/_convention.md`.
+
+### Step 6.2 — Branch `JobParseService` on `LoadedJobInput.kind`
+
+**File:** `src/jobs/job-parse.service.ts`
+
+Change the entry point from `(url: string)` to `(input: LoadedJobInput)`.
+
+- `kind: 'url'` branch: existing cheerio path, unchanged.
+- `kind: 'clipping'` branch:
+  1. Skip cheerio entirely.
+  2. Build a `RawJobDocument`-shaped object from the markdown body
+     (use `[#]+` for headings, `^- ` for list items, blank-line-split
+     for paragraphs — straightforward markdown → structure mapping).
+  3. Pre-fill `NormalizedJobPosting` fields the LLM would otherwise
+     re-derive: `sourceUrl` ← `input.sourceUrl`, `fetchedAt` ←
+     `input.loadedAt`, `clippedAt` (new optional field, see Step 6.3).
+  4. Pass the markdown body to `jobAnalysisProvider.analyze` as the
+     primary text; the LLM still produces `roleClassification`,
+     `employerContext`, `responsibilities`, `qualifications`, etc.
+  5. Use `domainHint` only as a tie-break input to the existing
+     `domainClassification` derivation; never let it override the
+     LLM's signal.
+
+`NormalizedJobPosting` does not change shape (per the design handoff)
+beyond adding two optional fields in Step 6.3.
+
+### Step 6.3 — Extend `NormalizedJobPosting` minimally
+
+**File:** `src/common/types/resume-tailor.types.ts`
+
+Add two optional fields:
+
+```ts
+/**
+ * Set when the input source was an Obsidian Web Clipper markdown file
+ * rather than a live URL fetch. Carries through to run artifacts so
+ * downstream consumers can distinguish clip-time provenance from
+ * live-fetch provenance.
+ */
+clippedAt?: string;
+
+/**
+ * Set when the input source was a clipping. Absolute path to the
+ * source markdown file on disk at the time of load. Useful for
+ * troubleshooting and for re-runs that want to skip the URL fetch.
+ */
+clippingPath?: string;
+```
+
+Both are optional and absent on URL-loaded jobs. The validator does
+not need to assert on them.
+
+### Step 6.4 — CLI flag `--job-clip <path>`
+
+**File:** wherever the `tailor` command is registered (likely
+`src/cli/tailor.command.ts` or equivalent).
+
+Add `--job-clip <path>` as a sibling to `--job-url`. Mutually
+exclusive — emit a clear error if both are passed (the
+`JobLoadService.load` guard already enforces this; the CLI layer
+should emit the friendlier error).
+
+Rejected alternative: scheme-detect on `--job-url` (i.e. `file://` or
+`.md` extension routes to clipping). Explicit flag wins because:
+- Documentation is unambiguous.
+- Tab-completion works.
+- The user's intent is visible at the call site.
+
+### Step 6.5 — `JobSignalService` — accept weaker signals on clippings
+
+**File:** `src/jobs/job-signal.service.ts`
+
+`JobSignalService.assess` currently keys off `RawJobDocument` (cheerio
+output). The MD branch produces a degraded `RawJobDocument` (see
+6.2.2) so the existing assessment will still run, but signals will
+typically be weaker.
+
+Decision (per design handoff): **do not** write a markdown-aware
+signal extractor. Instead:
+
+- Pass the existing assessor a `kind: 'clipping'` hint (extend
+  `assess`'s signature to take the input kind).
+- When `kind === 'clipping'`, **floor the resulting `signal.level`
+  at `'weak'`** (never return `'thin'` for a clipping — the user
+  explicitly chose to clip, that's the strongest "this matters"
+  signal possible).
+- The LLM-first classification path (Phase 1) carries the load now;
+  signals are no longer load-bearing for the recommender after Phase
+  2's role→profile map.
+
+### Step 6.6 — Test fixture + regression test
+
+**Files:**
+- `tests/fixtures/public-sector-swe-clipped.md` (new) — manually
+  derived MD twin of `tests/fixtures/public-sector-swe.html`. Source:
+  copy the body content of `wasQuiverNowVault/raw/web/Full Stack Developer.md`
+  (or `Application Developer.md`), trim to a stable subset, set
+  frontmatter explicitly:
+
+  ```yaml
+  ---
+  type: raw
+  source: https://cityjobs.nyc.gov/job/full-stack-developer-in-brooklyn-jid-41824
+  clipped: 2026-04-19T00:07:37-04:00
+  processed: false
+  read-status: unread
+  maintained-by: llm
+  tags:
+    - clipped
+  domain:
+  ---
+  ```
+
+- `tests/jobParse.test.ts` (extend) — add a case parallel to the
+  existing URL-path test:
+
+  ```ts
+  it('parses a Web Clipper markdown file into NormalizedJobPosting via the LLM path', async () => {
+    const input: LoadedJobInput = {
+      kind: 'clipping',
+      sourceUrl: 'https://cityjobs.nyc.gov/job/full-stack-developer-in-brooklyn-jid-41824',
+      clippedAt: '2026-04-19T00:07:37-04:00',
+      domainHint: null,
+      bodyMarkdown: await fs.readFile(
+        'tests/fixtures/public-sector-swe-clipped.md',
+        'utf-8',
+      ),
+      filePath: 'tests/fixtures/public-sector-swe-clipped.md',
+      loadedAt: new Date().toISOString(),
+    };
+    const result = await service.parseFromInput(input, stubLlmProvider);
+    expect(result.roleClassification).toBe('full-stack-engineering');
+    expect(result.employerContext).toBe('public-sector');
+    expect(result.sourceUrl).toBe(input.sourceUrl);
+    expect(result.clippedAt).toBe(input.clippedAt);
+    expect(result.clippingPath).toBe(input.filePath);
+    expect(result.signal?.level).not.toBe('thin');
+  });
+  ```
+
+Use the same stubbed LLM provider as the existing URL-path test;
+the goal is to prove the *plumbing* works, not to spend tokens on a
+real call. A separate live-API smoke test can be added if the user
+wants ongoing prompt-following assurance.
+
+### Step 6.7 — Verify & commit
+
+```bash
+npm run build
+npm test
+node dist/src/main.js tailor \
+  --job-clip 'tests/fixtures/public-sector-swe-clipped.md' \
+  --profile general-swe --output md
+```
+
+Verify:
+- `roleClassification === 'full-stack-engineering'`,
+  `employerContext === 'public-sector'`
+- The output run-artifact records `inputKind: 'clipping'` (or
+  equivalent provenance field)
+- The validator passes (Phase 5 gates apply unchanged)
+
+```bash
+git add src/jobs/job-load.service.ts \
+        src/jobs/job-parse.service.ts \
+        src/jobs/job-signal.service.ts \
+        src/jobs/jobs.module.ts \
+        src/common/types/resume-tailor.types.ts \
+        src/cli/tailor.command.ts \
+        tests/fixtures/public-sector-swe-clipped.md \
+        tests/jobParse.test.ts
+
+git commit -m "feat(jobs): accept Obsidian Web Clipper markdown as job input"
+```
+
+### Step 6.8 — Report & stop
+
+Report:
+- New files added (`job-load.service.ts`, MD fixture, etc.).
+- `NormalizedJobPosting` field additions and confirmation that no
+  existing consumer broke.
+- `JobSignalService` signature change and how downstream callers were
+  updated.
+- Commit SHA and message.
+- Smoke test result against the MD fixture (with stubbed LLM) and
+  any live-API result if one was attempted.
+
+### Out of scope for Phase 6 (deferred)
+
+- **Auto-detect clipping for a given URL.** If a user passes
+  `--job-url` and the clipping vault has a clip with a matching
+  `source:`, do NOT auto-prefer the clip. That requires the CLI to
+  know vault roots and to scan an arbitrary number of clippings on
+  every URL run. Defer.
+- **Vault-scoped batch processing.** "Tailor against every unread
+  clipping in `raw/web/`" is a different command (`tailor-batch`),
+  not a flag on `tailor`. Defer.
+- **Preview-pass integration.** The vault's preview-pass produces a
+  3-bullet TL;DR / Study Overview into `previews/` for human reading.
+  Resume-tailor does not consume previews; it consumes raw clippings
+  directly. Keep the boundaries clean.
+- **Paper / non-job clippings.** Phase 6 is strictly for job
+  postings. The classifier in `AI-Workflow-Vault` reroutes papers
+  out of `raw/web/` before resume-tailor would ever see them.
+
+### Phase 6 success criteria
+
+- `tailor --job-clip <path>` succeeds end-to-end against the MD
+  fixture and an arbitrary real Obsidian clipping in
+  `wasQuiverNowVault/raw/web/`.
+- `tailor --job-url <url>` continues to work unchanged.
+- Both flags are mutually exclusive and produce a clear error if both
+  are passed.
+- `JobSignalService` never returns `'thin'` for a clipping input.
+- Existing tests (Phase 5 baseline) all still pass; one new test
+  covers the MD branch end-to-end with a stubbed LLM.
+- Run-artifact provenance distinguishes URL vs clipping inputs.
 
 ---
 
