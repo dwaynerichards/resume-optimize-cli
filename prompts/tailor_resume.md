@@ -12,11 +12,24 @@ Rules:
 - Return JSON only.
 
 Expected output goals:
-- tailored summary
-- reordered skills
-- selected experience entries with rewritten bullets
-- source bullet ids for every generated bullet
-- omitted block ids
+- tailored summary driven by profile.summaryStyle and profile.toneGuidance
+- skills ordered by relevance to the job, with profile.skillsOrdering as a hint
+- experience entries ordered by relevance to the job, preserving chronology within each entry;
+  select the highest-signal `maxBulletsForLength` bullets per entry based on the job posting
+- every generated bullet has sourceBulletIds tracing to canonical bullet bank entries
+- requirementMappings array: for each minimum/preferred qualification, the canonical bullet ids
+  that support it, a rationale, and a confidence 0.0-1.0
+- omittedBlocks: ids of roleClusters you deliberately left out
+
+Length guidance:
+- "concise" → 2 bullets per entry, 3 entries max
+- "standard" → 3 bullets per entry, 4 entries max
+- "expanded" → 4 bullets per entry, 5 entries max
+
+Selection priority:
+1. Bullets whose content matches responsibilities / minimumQualifications / preferredQualifications
+2. Bullets whose tags align with profile.preferredBulletTags or profile.preferredDomainTags
+3. Bullets from roleClusters the user explicitly included via experienceControls
 
 Required JSON shape:
 {

@@ -4,19 +4,7 @@ import { ExperienceMappingService } from '../src/tailoring/experience-mapping.se
 
 describe('ExperienceMappingService', () => {
   it('prioritizes selected experience blocks and filters omitted ones', async () => {
-    const service = new ExperienceMappingService({
-      mapRequirements: async () => [
-        {
-          requirement: 'Node.js APIs',
-          matchedBulletIds: ['jpmc-role-bullet-1'],
-          rationale: 'Direct API match.',
-          confidence: 0.9,
-        },
-      ],
-      tailor: async () => {
-        throw new Error('not used in this test');
-      },
-    });
+    const service = new ExperienceMappingService();
     const canonicalResume: CanonicalResume = {
       identity: { fullName: 'Jordan Example' },
       contact: { email: 'jordan@example.com' },
@@ -181,6 +169,6 @@ describe('ExperienceMappingService', () => {
     expect(prepared.rewriteInput.canonicalResume.experience.map((entry) => entry.id)).toEqual(['jpmc-role']);
     expect(prepared.selectedBlocks).toContain('focus-backend');
     expect(prepared.omittedBlocks).toContain('org-fdny');
-    expect(prepared.rewriteInput.requirementMappings[0]?.matchedBulletIds).toContain('jpmc-role-bullet-1');
+    expect(prepared.rewriteInput.requirementMappings).toEqual([]);
   });
 });
