@@ -57,4 +57,18 @@ describe('ProfileRecommendationService', () => {
     });
     expect(result.profileId).toBe('public-service');
   });
+
+  it('falls back to general-swe when role and employer give no signal', () => {
+    const service = new ProfileRecommendationService();
+    const result = service.recommend(profileDefaultsFixture(), {
+      ...baseJob(),
+      roleClassification: 'unknown',
+      employerContext: 'unknown',
+    });
+    expect(result.profileId).toBe('general-swe');
+    expect(result.shouldPrompt).toBe(true);
+    expect(result.rationale).toEqual([
+      'No strong profile-specific signals were found; defaulted to general-swe.',
+    ]);
+  });
 });

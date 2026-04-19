@@ -80,11 +80,20 @@ export class ProfileRecommendationService {
       .slice(0, 3)
       .map(({ profile, score }) => ({ profileId: profile.id, score }));
 
+    // No-signal fallback: when nothing scored above zero, the sorted top is
+    // whichever profile happened to be first in the input array (stable sort
+    // on a 0-tie). Prefer general-swe as the explicit fallback so unknown
+    // jobs don't silently land on the alphabetically-first profile.
+    const noSignal = !top || top.score <= 0;
+    const generalSwe = profiles.find((p) => p.id === 'general-swe');
+    const fallbackId: ProfileDefinition['id'] =
+      generalSwe?.id ?? top?.profile.id ?? 'general-swe';
+
     return {
-      profileId: top?.profile.id ?? 'general-swe',
+      profileId: noSignal ? fallbackId : top.profile.id,
       confidence,
       rationale:
-        top && top.reasons.length > 0
+        !noSignal && top.reasons.length > 0
           ? top.reasons
           : ['No strong profile-specific signals were found; defaulted to general-swe.'],
       shouldPrompt: confidence < 0.72 || margin < 0.12 || (top?.score ?? 0) < 0.5,
