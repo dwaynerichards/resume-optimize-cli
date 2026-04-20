@@ -9,7 +9,7 @@ import {
   RESUME_MASTER_FILENAME,
 } from '../common/constants';
 import { TailoringArtifacts } from '../common/types';
-import { readStructuredFile } from '../common/utils';
+import { readStructuredFile, TerminalProgress } from '../common/utils';
 import { ExperienceControlDiscoveryService } from '../profiles/experience-control-discovery.service';
 import { ProfileRecommendationService } from '../profiles/profile-recommendation.service';
 import { ProfileResolutionService } from '../profiles/profile-resolution.service';
@@ -278,7 +278,22 @@ export class CliService {
     }
 
     const jobUrl = options.jobUrl;
-    const job = options.job ?? (await this.jobParseService.fetchAndNormalize(jobUrl!));
+    let job = options.job;
+    if (!job && jobUrl) {
+      const fetchProgress = new TerminalProgress();
+      fetchProgress.start('Fetching job posting');
+      try {
+        job = await this.jobParseService.fetchAndNormalize(jobUrl);
+        fetchProgress.succeed('Job posting ready');
+      } catch (error) {
+        fetchProgress.fail('Could not fetch job posting');
+        throw error;
+      }
+    }
+
+    if (!job) {
+      throw new Error('Tailor requires a job posting URL or a pre-loaded job.');
+    }
 
     if (!job.signal || job.signal.level === 'strong') {
       return { ...options, job };
@@ -315,22 +330,30 @@ export class CliService {
       return options;
     }
 
-    const dataDir = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR);
-    const profileDefaults = await this.profileResolutionService.loadProfileDefaults(
-      resolve(dataDir, PROFILE_DEFAULTS_FILENAME),
-    );
-    const recommendation = this.profileRecommendationService.recommend(profileDefaults, options.job);
-    runLogger.info('auto-selected profile recommendation', {
-      profileId: recommendation.profileId,
-      confidence: recommendation.confidence,
-      rationale: recommendation.rationale,
-    });
+    const profileProgress = new TerminalProgress();
+    profileProgress.start('Selecting profile from job');
+    try {
+      const dataDir = resolve(process.cwd(), process.env.DATA_DIR ?? DEFAULT_DATA_DIR);
+      const profileDefaults = await this.profileResolutionService.loadProfileDefaults(
+        resolve(dataDir, PROFILE_DEFAULTS_FILENAME),
+      );
+      const recommendation = this.profileRecommendationService.recommend(profileDefaults, options.job);
+      runLogger.info('auto-selected profile recommendation', {
+        profileId: recommendation.profileId,
+        confidence: recommendation.confidence,
+        rationale: recommendation.rationale,
+      });
+      profileProgress.succeed(`Using profile ${recommendation.profileId}`);
 
-    return {
-      ...options,
-      profileId: recommendation.profileId,
-      recommendationConfidence: recommendation.confidence,
-    };
+      return {
+        ...options,
+        profileId: recommendation.profileId,
+        recommendationConfidence: recommendation.confidence,
+      };
+    } catch (error) {
+      profileProgress.fail('Profile selection failed');
+      throw error;
+    }
   }
 
   private describeProfileRecommendation(
