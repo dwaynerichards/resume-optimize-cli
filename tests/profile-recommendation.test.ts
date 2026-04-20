@@ -36,6 +36,19 @@ function baseJob(): NormalizedJobPosting {
 }
 
 describe('ProfileRecommendationService', () => {
+  it('does not prompt when the role signal is strong and unambiguous', () => {
+    const service = new ProfileRecommendationService();
+    const result = service.recommend(profileDefaultsFixture(), {
+      ...baseJob(),
+      jobTitle: 'Backend Engineer',
+      roleClassification: 'backend-engineering',
+      employerContext: 'private-sector',
+    });
+    expect(result.profileId).toBe('backend-engineer');
+    expect(result.shouldPrompt).toBe(false);
+    expect(result.confidence).toBeGreaterThanOrEqual(0.8);
+  });
+
   it('recommends general-swe for public-sector Full Stack Developer role', () => {
     const service = new ProfileRecommendationService();
     const result = service.recommend(profileDefaultsFixture(), {
@@ -70,5 +83,23 @@ describe('ProfileRecommendationService', () => {
     expect(result.rationale).toEqual([
       'No strong profile-specific signals were found; defaulted to general-swe.',
     ]);
+    expect(result.alternatives[0]?.profileId).toBe('general-swe');
+  });
+
+  it('avoids hidden unsupported profiles even when the role maps to them', () => {
+    const service = new ProfileRecommendationService();
+    const defaults = profileDefaultsFixture();
+    defaults.profiles = defaults.profiles.map((profile) =>
+      profile.id === 'blockchain-engineer' ? { ...profile, supported: false } : profile,
+    );
+
+    const result = service.recommend(defaults, {
+      ...baseJob(),
+      jobTitle: 'Blockchain Engineer',
+      roleClassification: 'blockchain-engineering',
+      employerContext: 'private-sector',
+    });
+
+    expect(result.profileId).toBe('general-swe');
   });
 });

@@ -89,6 +89,16 @@ export class ProfileRecommendationService {
     const fallbackId: ProfileDefinition['id'] =
       generalSwe?.id ?? top?.profile.id ?? 'general-swe';
 
+    const resolvedAlternatives: ProfileRecommendationCandidate[] = noSignal
+      ? [
+          { profileId: fallbackId, score: 0 },
+          ...scored
+            .filter((candidate) => candidate.profile.id !== fallbackId)
+            .slice(0, 2)
+            .map(({ profile, score }) => ({ profileId: profile.id, score })),
+        ].slice(0, 3)
+      : alternatives;
+
     return {
       profileId: noSignal ? fallbackId : top.profile.id,
       confidence,
@@ -97,7 +107,7 @@ export class ProfileRecommendationService {
           ? top.reasons
           : ['No strong profile-specific signals were found; defaulted to general-swe.'],
       shouldPrompt: confidence < 0.72 || margin < 0.12 || (top?.score ?? 0) < 0.5,
-      alternatives,
+      alternatives: resolvedAlternatives,
     };
   }
 }
